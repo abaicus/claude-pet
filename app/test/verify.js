@@ -467,7 +467,7 @@ const saBlock = html.slice(html.indexOf(SA_START), html.indexOf(SA_END));
 assert.ok(saBlock.includes("usageFromLine"), "could not lift the session-awareness block from index.html");
 const sa = new Function(
   "path",
-  saBlock + "\nreturn { SESSIONS, trackSession, activeSessions, usageFromLine, fmtTokens, shortModel, proj, busyCtx, CTX_WINDOW };"
+  saBlock + "\nreturn { SESSIONS, trackSession, activeSessions, usageFromLine, fmtTokens, shortModel, proj, busyCtx, ctxLine, CTX_WINDOW };"
 )(path);
 
 test("parses token usage out of a real transcript line", () => {
@@ -529,6 +529,21 @@ test("busyCtx reports the busiest live session for the stats line", () => {
   assert.strictEqual(sa.busyCtx().proj, "small", "an ended session is still hogging the stats line");
 });
 
+test("ctxLine names EVERY live session with its own context, busiest first", () => {
+  sa.SESSIONS.clear();
+  assert.strictEqual(sa.ctxLine(), "", "no sessions should mean no line, not junk");
+  sa.trackSession({ session_id: "c1", cwd: "/tmp/api", hook_event_name: "SessionStart" });
+  sa.trackSession({ session_id: "c2", cwd: "/tmp/web-frontend-app", hook_event_name: "SessionStart" });
+  sa.SESSIONS.get("c1").ctx = sa.CTX_WINDOW * 0.62;
+  sa.SESSIONS.get("c2").ctx = sa.CTX_WINDOW * 0.31;
+  assert.strictEqual(sa.ctxLine(), "api ~62% · web-fronte ~31%", "long names must truncate, both sessions must show");
+  for (let i = 0; i < 3; i++) {
+    sa.trackSession({ session_id: "x" + i, cwd: "/tmp/p" + i, hook_event_name: "SessionStart" });
+    sa.SESSIONS.get("x" + i).ctx = 1000;
+  }
+  assert.match(sa.ctxLine(), /\+2$/, "more than three sessions should overflow into +N");
+});
+
 test("formats tokens and model names the way a pixel bubble wants them", () => {
   assert.strictEqual(sa.fmtTokens(512), "512");
   assert.strictEqual(sa.fmtTokens(51200), "51k");
@@ -562,9 +577,10 @@ test("accessories: unique ids, 'none' is free, every lock is reachable", () => {
 });
 
 test("the whole cast is present and every character hatches and levels up", () => {
-  for (const want of ["blob", "cat", "gerbil", "dog", "ghost", "frog", "penguin"])
+  for (const want of ["blob", "cat", "gerbil", "dog", "ghost", "penguin"])
     assert.ok(cust.CHARACTERS[want], "missing character: " + want);
-  assert.ok(!cust.CHARACTERS.goose, "the goose is back — it looked bad, it stays gone");
+  for (const gone of ["goose", "frog"])
+    assert.ok(!cust.CHARACTERS[gone], gone + " is back — it was cut for looking bad, it stays gone");
   assert.ok(cust.CHARACTERS[cust.CUSTOM_DEFAULTS.character], "default character does not exist");
   for (const [id, ch] of Object.entries(cust.CHARACTERS)) {
     for (const stage of ["hatchling", "junior", "senior"])
@@ -599,7 +615,9 @@ test("eyes and mouth always land on the body — including ±1 eye tracking", ()
           assert.ok(on(L.eyeXR + lx, L.eyeY + i), who + ": right eye off-body at lx=" + lx);
         }
       assert.ok(L.eyeH === 1 || L.eyeH === 2, who + ": eyes must be 1-2px tall");
-      assert.ok(on(L.cx, L.mouthY) && on(L.cx + 1, L.mouthY), who + ": mouth off-body");
+      // the idle mouth turns WITH the eyes, so it needs the same ±1 clearance
+      for (let lx = -1; lx <= 1; lx++)
+        assert.ok(on(L.cx + lx, L.mouthY) && on(L.cx + 1 + lx, L.mouthY), who + ": mouth off-body at lx=" + lx);
       assert.ok(L.top >= 0, who + ": crown above the grid");
     }
   }
@@ -627,7 +645,7 @@ test("the renderer reacts to the chatty events too", () => {
 });
 
 test("interaction & settings wiring is present in all three sources", () => {
-  for (const needle of ["dblclick", "pet-wander", "pet-cursor", "pet-walk", "pet-custom-set", "PET_COOLDOWN", "TREAT_COOLDOWN"])
+  for (const needle of ["dblclick", "pet-wander", "pet-cursor", "pet-walk", "pet-custom-set", "PET_COOLDOWN", "TREAT_COOLDOWN", 'id="sessions"', "ctxLine"])
     assert.ok(html.includes(needle), "index.html missing " + needle);
   const settingsSrc = fs.readFileSync(path.join(__dirname, "..", "settings.html"), "utf8");
   for (const needle of ["pet-state-get", "custom-set", "settings-close", "showGlow", "pet-scale", "pet-reset-window", "characters"])

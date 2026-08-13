@@ -46,7 +46,7 @@ Electron app — transparent, frameless, always-on-top, draggable
 
 ## What's verified
 
-`npm test` — 52 checks, all green:
+`npm test` — 53 checks, all green:
 
 - Installer: idempotent double-install, preserves user hooks/groups/matchers
   and unrelated settings keys, backs up, refuses invalid JSON leaving the file
@@ -124,9 +124,13 @@ Verified by actually running it on macOS (screenshots via `CLAUDE_PET_SHOT`):
   — subagent usage in the same transcript made the context readout bounce).
   Knows: active sessions + project names, context fullness (input + both
   cache buckets, /200k assumed — labels say "~"), model, rolling 5h
-  output-token burn. Context is ALWAYS visible: 🧠% of the busiest live
-  session in the stats line (`busyCtx()`), plus a periodic report every
-  10min once ctx ≥40% ("🧠 ~62% ctx in proj · ~1.2M out/5h"), plus one-shot
+  output-token burn. Context is ALWAYS visible and NEVER ambiguous: a
+  sessions strip above the stats line lists EVERY live session by name with
+  its own % (`ctxLine()`, busiest first, top 3 + "+N", names cut at 10
+  chars) — one number for "whichever session is busiest" read as wrong the
+  moment two sessions ran. The same line feeds the periodic report every
+  10min once any session ≥40% ("🧠 api ~62% · web ~31% · ~1.2M out/5h"),
+  plus one-shot
   warnings at ~75% and ~90% ("/compact soon!"), re-armed below 60%.
   Unprompted gossip every ~2.5min at 35% odds, only while events are recent.
   **/usage plan limits are NOT readable**: that data lives behind an
@@ -151,7 +155,7 @@ Verified by actually running it on macOS (screenshots via `CLAUDE_PET_SHOT`):
   minute (+0.3 otherwise). **Sleep needs low energy AND a minute of quiet** —
   gating on energy alone made the pet doze through every busy session, which
   is precisely when it should be lively.
-- **Characters** (`S.custom.character`): blob, cat, gerbil, dog, ghost, frog,
+- **Characters** (`S.custom.character`): blob, cat, gerbil, dog, ghost,
   penguin. All hatch from the SAME egg and evolve through the same xp ladder;
   each character × stage is its own 16×16 grid + face layout in the
   `CHARACTERS` table (grid letters: `.` empty, `D` outline, `B` body/palette,
@@ -159,13 +163,16 @@ Verified by actually running it on macOS (screenshots via `CLAUDE_PET_SHOT`):
   = orange feet, `bill` = wide flat idle mouth). The wizard stage reuses the
   senior grid — the hat marks it, anchored to each layout's `top`/`cx`. A
   saved character that no longer exists falls back to blob on load.
-  **The goose was tried and removed** ("looks bad" — user): a long neck needs
-  more pixels than 16 give it. Stick to shapes that read at 16×16 — round
-  bodies, ears, bellies, wavy hems. Two hard-won face rules: eyes must not
-  hang off a dark crown-bridge row (they merge with it and vanish — give
-  them a body-color row above), and eyes inside small silhouette bumps just
-  fill the bump with dark (the frog's eyes live on its face, bumps stay
-  empty).
+  **The goose AND the frog were tried and removed** ("looks bad" / "makes no
+  sense" — user): a long neck needs more pixels than 16 give it, and the
+  frog's eye-bumps could not be made to read. Stick to shapes that read
+  instantly at 16×16 — round bodies, ears, bellies, wavy hems. Face rules
+  paid for in cut characters: eyes must not hang off a dark crown-bridge row
+  (they merge and vanish), eyes inside silhouette bumps just fill the bump
+  with dark, and the idle mouth turns WITH the eyes (mx+lx) — eyes sliding
+  over a pinned mouth smears the face sideways ("look like shit when looking
+  sideways" — user). Expression mouths stay centred. The geometry test
+  enforces ±1 clearance for BOTH eyes and mouth.
 - Evolution by xp: egg(0) → hatchling(50) → junior(250) → senior(1000) →
   wizard(3000). Each stage LOOKS different, not recolored — bigger body,
   longer ears, taller neck. Stage markers stay OFF the face and IN the
@@ -244,7 +251,7 @@ Verified by actually running it on macOS (screenshots via `CLAUDE_PET_SHOT`):
 
 Done: 1–4, plus (unnumbered): interactivity (petting/treats/eyes/wander),
 customization + settings window, session awareness/context warnings, visual
-evolution ladder, glow, bubble reposition, characters (cat/gerbil/dog/ghost/frog/penguin),
+evolution ladder, glow, bubble reposition, characters (cat/gerbil/dog/ghost/penguin),
 sounds for all actions, always-visible context readout (sidechain-free), Notification/PreCompact/SubagentStop reactions.
 
 1. ~~Run it, fix anything platform-specific~~ — see "Platform notes" below

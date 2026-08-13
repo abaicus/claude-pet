@@ -86,6 +86,18 @@
     text-shadow: 1px 1px 0 #2b2b2b, -1px 1px 0 #2b2b2b, 1px -1px 0 #2b2b2b, -1px -1px 0 #2b2b2b;
     white-space: nowrap;
   }
+  /* one row above the stats: every live session by name with its own context */
+  #sessions {
+    position: absolute;
+    bottom: 17px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    color: #fffef2;
+    text-shadow: 1px 1px 0 #2b2b2b, -1px 1px 0 #2b2b2b, 1px -1px 0 #2b2b2b, -1px -1px 0 #2b2b2b;
+    white-space: nowrap;
+  }
   /* Everything the pet is made of lives in here and scales as one unit. The
      box is the unscaled base size, anchored to the window's bottom centre, so
      scaling about that origin makes it fill the resized window exactly. */
@@ -105,6 +117,7 @@
   <div id="ground"></div>
   <div id="bubble"></div>
   <canvas id="stage" width="160" height="220"></canvas>
+  <div id="sessions"></div>
   <div id="stats"></div>
 </div>
 
@@ -561,8 +574,9 @@ const CHARACTERS = {
       },
     },
   },
-  // The goose is gone — a long neck needs more pixels than 16 give it ("looks
-  // bad" — user). These three are the shapes 16×16 was made for.
+  // The goose (long neck) and the frog (bump-eyes) were both tried and cut —
+  // "looks bad" / "makes no sense" (user). 16×16 keeps what reads instantly:
+  // round bodies, ears, bellies, wavy hems.
   ghost: {
     label: "ghost",
     stages: {
@@ -631,77 +645,6 @@ const CHARACTERS = {
         ],
         top: 1, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 5, eyeH: 2, mouthY: 9,
         blushXL: 3, blushXR: 12, blushY: 8, scarfXL: 3, scarfXR: 12, scarfY: 10, feetXL: 5, feetXR: 10,
-      },
-    },
-  },
-  frog: {
-    label: "frog",
-    stages: {
-      hatchling: {
-        grid: [
-          "................",
-          "................",
-          "................",
-          "................",
-          "................",
-          ".....DD..DD.....",
-          "......DDDD......",
-          ".....DBBBBD.....",
-          "....DBBBBBBD....",
-          "...DBBBBBBBBD...",
-          "...DBBBBBBBBD...",
-          "...DBBBBBBBBD...",
-          "....DBBBBBBD....",
-          ".....DDDDDD.....",
-          "................",
-          "................",
-        ],
-        top: 6, cx: 7, eyeXL: 6, eyeXR: 9, eyeY: 9, eyeH: 1, mouthY: 11,
-        blushXL: 4, blushXR: 11, blushY: 10, scarfXL: 4, scarfXR: 11, scarfY: 11, feetXL: 6, feetXR: 9,
-      },
-      junior: {
-        grid: [
-          "................",
-          "................",
-          "..DDD......DDD..",
-          ".DBBBD....DBBBD.",
-          ".DBBBDDDDDDBBBD.",
-          ".DBBBBBBBBBBBBD.",
-          ".DBBBBBBBBBBBBD.",
-          ".DBBBBBBBBBBBBD.",
-          ".DBBBBBBBBBBBBD.",
-          ".DBBBBBBBBBBBBD.",
-          ".DBBBBBBBBBBBBD.",
-          "..DBBBBBBBBBBD..",
-          "...DBBBBBBBBD...",
-          "....DDDDDDDD....",
-          "................",
-          "................",
-        ],
-        top: 4, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 6, eyeH: 2, mouthY: 9,
-        blushXL: 3, blushXR: 12, blushY: 8, scarfXL: 3, scarfXR: 12, scarfY: 10, feetXL: 5, feetXR: 10,
-      },
-      senior: {
-        grid: [
-          "................",
-          "..DDD......DDD..",
-          ".DBBBD....DBBBD.",
-          ".DBBBDDDDDDBBBD.",
-          "DBBBBBBBBBBBBBBD",
-          "DBBBBBBBBBBBBBBD",
-          "DBBBBBBBBBBBBBBD",
-          ".DBBBBBBBBBBBBD.",
-          ".DBBWWWWWWWWBBD.",
-          ".DBBWWWWWWWWBBD.",
-          ".DBBBBBBBBBBBBD.",
-          "..DBBBBBBBBBBD..",
-          "...DBBBBBBBBD...",
-          "....DDDDDDDD....",
-          "................",
-          "................",
-        ],
-        top: 3, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 5, eyeH: 2, mouthY: 8,
-        blushXL: 2, blushXR: 13, blushY: 6, scarfXL: 3, scarfXR: 12, scarfY: 10, feetXL: 5, feetXR: 10,
       },
     },
   },
@@ -912,9 +855,11 @@ function pushState() {
 pushState();
 
 const statsEl = document.getElementById("stats");
+const sessionsEl = document.getElementById("sessions");
 const groundEl = document.getElementById("ground");
 const applyVisibility = () => {
   statsEl.style.display = S.custom.showStats ? "" : "none";
+  sessionsEl.style.display = S.custom.showStats ? "" : "none";
   const glowOn = S.custom.showGlow !== false;
   document.body.classList.toggle("glow", glowOn); // rim light on the canvas
   groundEl.style.display = glowOn ? "" : "none";
@@ -1129,11 +1074,24 @@ const activeSessions = () =>
 
 const proj = (s) => path.basename(s.cwd || "") || "somewhere";
 
-// The busiest live session's context, or null — feeds the stats line and the
-// periodic report, so both always tell the same story.
+// The busiest live session's context, or null — the "is anything close to the
+// wall" gate for the periodic report.
 function busyCtx() {
   const b = activeSessions().filter((s) => s.ctx).sort((x, y) => y.ctx - x.ctx)[0];
   return b ? { pct: Math.min(999, Math.round((b.ctx / CTX_WINDOW) * 100)), proj: proj(b) } : null;
+}
+
+// EVERY live session by name with its own context — one ambiguous number for
+// "whichever session happens to be busiest" reads as simply wrong when you're
+// looking at a different one. The sessions strip and the periodic report both
+// render this, so they can never disagree.
+function ctxLine() {
+  const live = activeSessions().filter((s) => s.ctx).sort((x, y) => y.ctx - x.ctx);
+  const parts = live.slice(0, 3).map(
+    (s) => `${proj(s).slice(0, 10)} ~${Math.min(999, Math.round((s.ctx / CTX_WINDOW) * 100))}%`
+  );
+  if (live.length > 3) parts.push(`+${live.length - 3}`);
+  return parts.join(" · ");
 }
 
 // One API response spans several transcript lines, each repeating the same
@@ -1266,7 +1224,7 @@ setInterval(() => {
   const b = busyCtx();
   if (!b || b.pct < 40) return; // nothing worth interrupting for yet
   const burned = BURN.reduce((n, x) => n + x.tokens, 0);
-  say(`🧠 ~${b.pct}% ctx in ${b.proj}${burned > 1000 ? ` · ~${fmtTokens(burned)} out/5h` : ""}`);
+  say(`🧠 ${ctxLine()}${burned > 1000 ? ` · ~${fmtTokens(burned)} out/5h` : ""}`);
 }, 10 * 60e3);
 
 /* ---------- tailing + rotation ---------- */
@@ -1414,7 +1372,7 @@ function render() {
     // eyes — the classic format: 2px tall, 1px on blink, nothing fancier
     if (a === "sleep") { px(L.eyeXL, ey, INK); px(L.eyeXL + 1, ey, INK); px(L.eyeXR - 1, ey, INK); px(L.eyeXR, ey, INK); }
     else if (a === "sad") { px(L.eyeXL, ey + 1, INK); px(L.eyeXR, ey + 1, INK); }
-    else if (frame % 24 === 0) { px(L.eyeXL, ey, INK); px(L.eyeXR, ey, INK); } // blink
+    else if (frame % 24 === 0) { px(L.eyeXL + lx, ey, INK); px(L.eyeXR + lx, ey, INK); } // blink mid-turn stays turned
     else {
       for (let i = 0; i < L.eyeH; i++) {
         px(L.eyeXL + lx, ey + i, INK);
@@ -1422,14 +1380,18 @@ function render() {
       }
     }
 
-    // mouth, around the stage's centre columns — a goose's mouth IS its beak
+    // mouth, around the stage's centre columns — a penguin's mouth is its beak.
+    // The IDLE mouth turns WITH the eyes (mx + lx): eyes sliding sideways over
+    // a pinned mouth smeared the face; moving them together reads as the head
+    // turning. Expression mouths (eat/party/sad) stay centred — they're the
+    // whole show while they play.
     const mc = chr.mouthColor || INK;
     const mx = L.cx;
     const my = L.mouthY + dy;
     if (a === "eat") { if (frame % 2) { px(mx, my, mc); px(mx + 1, my, mc); px(mx, my - 1, mc); px(mx + 1, my - 1, mc); } else { px(mx, my, mc); px(mx + 1, my, mc); } }
     else if (a === "party" || a === "love") { px(mx - 1, my - 1, mc); px(mx, my, mc); px(mx + 1, my, mc); px(mx + 2, my - 1, mc); }
     else if (a === "sad" || a === "hungry") { px(mx, my, mc); px(mx + 1, my, mc); px(mx - 1, my + 1, mc); px(mx + 2, my + 1, mc); }
-    else { px(mx, my, mc); px(mx + 1, my, mc); if (chr.bill) { px(mx - 1, my, mc); px(mx + 2, my, mc); } }
+    else { px(mx + lx, my, mc); px(mx + 1 + lx, my, mc); }
 
     // blush when happy
     if (a === "party" || a === "love" || S.mood > 80) { px(L.blushXL, L.blushY + dy, "#f48fb1"); px(L.blushXR, L.blushY + dy, "#f48fb1"); }
@@ -1491,12 +1453,12 @@ function render() {
   // zzz
   if (a === "sleep" && frame % 4 < 2) { px(13, 3, "#fffef2"); px(14, 2, "#fffef2"); }
 
-  // Context lives IN the stats line now — permanently visible, not a dice
-  // roll. The ~ is honest: /200k assumed, measured from the transcript.
-  const b = busyCtx();
   statsEl.textContent =
-    `${S.custom.name ? S.custom.name + " " : ""}lv.${level()}  🍖${Math.round(100 - S.hunger)}  ⚡${Math.round(S.energy)}` +
-    (b ? `  🧠${b.pct}%` : "");
+    `${S.custom.name ? S.custom.name + " " : ""}lv.${level()}  🍖${Math.round(100 - S.hunger)}  ⚡${Math.round(S.energy)}`;
+  // Context, permanently visible and unambiguous: every live session by name.
+  // (One number for "whichever session is busiest" read as simply wrong.)
+  const line = ctxLine();
+  sessionsEl.textContent = line ? "🧠 " + line : "";
 }
 setInterval(render, 250); // chunky 4fps, like the real thing
 render();
