@@ -1,7 +1,12 @@
 node_modules/
+dist/
 
 # rendered by scripts/shoot-mockups.js
 mockups/*.png
+
+# scratch space for iconutil; build/icon.png and build/icon.icns ARE committed,
+# because CI must not have to run Electron just to draw an icon
+build/icon.iconset/
 
 .DS_Store
 *.log

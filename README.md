@@ -16,7 +16,25 @@ the pet wears a `!` for as long as one of them is actually blocked on you.
     ▸ docs-site · working · ~9%                     ← needs nothing from you
 ```
 
-## Run
+## Install
+
+macOS 10.15+, Apple Silicon or Intel.
+
+```bash
+brew install --cask abaicus/tap/claude-pet
+```
+
+Or grab the disk image from [the latest
+release](https://github.com/abaicus/claude-pet/releases/latest) — `arm64` for
+Apple Silicon, `x64` for Intel — and drag it to Applications. The build is
+ad-hoc signed but not notarized by Apple, so a DMG install needs the quarantine
+flag cleared once (the cask does this for you):
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Claude Pet.app"
+```
+
+From source:
 
 ```bash
 npm install
@@ -159,8 +177,13 @@ character of its text.
 
 ```bash
 npm test                                  # headless brain tests (node:test)
+npm run dist                              # DMG + ZIP for both arches → dist/
+npm run icon                              # redraw build/icon.icns from art.js
 npx electron scripts/shoot-mockups.js     # render art mockups to mockups/*.png
 ```
+
+Releases (GitHub release + Homebrew cask, from one workflow run) are described
+in [docs/releasing.md](docs/releasing.md).
 
 Sandboxing for development — never touches your real config:
 

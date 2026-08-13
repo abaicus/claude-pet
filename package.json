@@ -1,14 +1,29 @@
 {
   "name": "claude-pet",
+  "productName": "Claude Pet",
   "version": "0.1.0",
   "description": "A desktop tamagotchi that feeds on Claude Code activity.",
   "main": "src/main.js",
   "private": true,
+  "license": "MIT",
+  "author": {
+    "name": "Andrei Baicus",
+    "email": "baicusandrei@gmail.com"
+  },
+  "homepage": "https://github.com/abaicus/claude-pet",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abaicus/claude-pet.git"
+  },
   "scripts": {
     "start": "electron .",
-    "test": "node --test 'test/**/*.test.js'"
+    "test": "node --test 'test/**/*.test.js'",
+    "icon": "electron scripts/make-icon.js",
+    "pack": "electron-builder --mac --dir --config electron-builder.config.js",
+    "dist": "electron-builder --mac --config electron-builder.config.js"
   },
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
   }
 }

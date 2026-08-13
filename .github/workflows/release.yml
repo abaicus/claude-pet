@@ -1,0 +1,217 @@
+name: Release
+
+# Two ways in, one path out:
+#   • Actions → Release → Run workflow, type a version → bumps package.json,
+#     commits, tags and releases.
+#   • push a v* tag yourself → releases exactly that tag.
+# The tag pushed by the first route cannot re-trigger the second (GITHUB_TOKEN
+# pushes do not start workflows), so there is no way to release twice.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. 0.2.0'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark the GitHub release as a pre-release'
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # arm64 runner. It builds the x64 target too — Electron is downloaded per
+    # arch and there is nothing native here to cross-compile.
+    runs-on: macos-14
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # A release that ships a red build is worse than no release.
+      - name: Test
+        run: npm test
+
+      - name: Resolve version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+            pkg=$(node -p "require('./package.json').version")
+            if [ "$version" != "$pkg" ]; then
+              echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${pkg}"
+              exit 1
+            fi
+          else
+            version="${INPUT_VERSION#v}"
+            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::'${version}' is not a semver version"
+              exit 1
+            fi
+            if git rev-parse "v${version}" >/dev/null 2>&1; then
+              echo "::error::tag v${version} already exists"
+              exit 1
+            fi
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
+      # Only the dispatch route writes to the repo; a tag build is read-only.
+      - name: Bump, commit and tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          git add package.json package-lock.json
+          git commit -m "release: v${VERSION}"
+          git tag "v${VERSION}"
+          git push origin HEAD:"${GITHUB_REF_NAME}"
+          git push origin "v${VERSION}"
+
+      - name: Build
+        env:
+          # Every one of these is optional. Empty CSC_LINK means unsigned:
+          # electron-builder.config.js switches to identity:null and
+          # build/after-pack.js ad-hoc signs so the app still launches on
+          # Apple Silicon. Add the secrets and the same build notarizes.
+          CSC_LINK: ${{ secrets.APPLE_CERT_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx electron-builder --mac --config electron-builder.config.js --publish never
+
+      - name: Checksums
+        id: sha
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          arm=$(shasum -a 256 "dist/claude-pet-${VERSION}-arm64.zip" | cut -d' ' -f1)
+          x64=$(shasum -a 256 "dist/claude-pet-${VERSION}-x64.zip"   | cut -d' ' -f1)
+          echo "arm=${arm}" >> "$GITHUB_OUTPUT"
+          echo "x64=${x64}" >> "$GITHUB_OUTPUT"
+          shasum -a 256 dist/*.zip dist/*.dmg
+
+      # Rendered here and shipped as an asset so both routes into the tap copy
+      # one file rather than each re-deriving it.
+      - name: Render Homebrew cask
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node scripts/render-cask.js "$VERSION" \
+            "${{ steps.sha.outputs.arm }}" "${{ steps.sha.outputs.x64 }}" \
+            dist/claude-pet.rb
+          cat dist/claude-pet.rb
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          notes=$(mktemp)
+          cat > "$notes" <<EOF
+          ## Install
+
+          \`\`\`sh
+          brew install --cask abaicus/tap/claude-pet
+          \`\`\`
+
+          Or download the disk image for your Mac: **\`claude-pet-${VERSION}-arm64.dmg\`**
+          (Apple Silicon) or **\`claude-pet-${VERSION}-x64.dmg\`** (Intel).
+
+          This build is ad-hoc signed but not notarized by Apple. The Homebrew
+          cask clears the quarantine flag for you; if you use the DMG, run this
+          once after dragging the app to Applications:
+
+          \`\`\`sh
+          xattr -dr com.apple.quarantine "/Applications/Claude Pet.app"
+          \`\`\`
+          EOF
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file "$notes" \
+            --generate-notes \
+            $([ "${PRERELEASE:-false}" = "true" ] && echo --prerelease) \
+            "dist/claude-pet-${VERSION}-arm64.dmg" \
+            "dist/claude-pet-${VERSION}-x64.dmg" \
+            "dist/claude-pet-${VERSION}-arm64.zip" \
+            "dist/claude-pet-${VERSION}-x64.zip" \
+            "dist/claude-pet.rb"
+
+  homebrew:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      # secrets cannot gate a job, so the token is inspected first and every
+      # step below opts in. A missing token must not fail a good release: the
+      # tap's own updater picks the same asset up on its next run.
+      - name: Is a tap token configured?
+        id: token
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -n "${TAP_TOKEN}" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::HOMEBREW_TAP_TOKEN is not set — skipping the push to abaicus/homebrew-tap. The tap's own update-cask workflow will pick this release up (hourly, or run it manually)."
+          fi
+
+      - name: Check out the tap
+        if: steps.token.outputs.present == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: abaicus/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update the cask
+        if: steps.token.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p tap/Casks
+          gh release download "v${VERSION}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern claude-pet.rb --output tap/Casks/claude-pet.rb --clobber
+          cd tap
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- Casks/claude-pet.rb; then
+            echo "cask already at v${VERSION}"
+            exit 0
+          fi
+          git add Casks/claude-pet.rb
+          git commit -m "claude-pet ${VERSION}"
+          git push

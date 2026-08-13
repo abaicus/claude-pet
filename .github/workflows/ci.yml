@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+      # Packaging breaks in ways the unit tests cannot see — a file left out of
+      # the asar, a config that no longer parses. --dir stops before the DMG,
+      # which is the slow half and not what tends to break.
+      - name: Package smoke test
+        run: |
+          set -euo pipefail
+          npx electron-builder --mac --dir --arm64 --config electron-builder.config.js
+          app="dist/mac-arm64/Claude Pet.app"
+          test -d "$app"
+          codesign --verify --verbose "$app"
+          # Every window the app can open must actually be inside the bundle.
+          for f in src/body/pet.html src/settings/settings.html src/onboarding/onboarding.html; do
+            npx asar list "$app/Contents/Resources/app.asar" | grep -qx "/$f" \
+              || { echo "::error::$f is missing from app.asar"; exit 1; }
+          done
