@@ -89,7 +89,14 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           npm version "$VERSION" --no-git-tag-version --allow-same-version
           git add package.json package-lock.json
-          git commit -m "release: v${VERSION}"
+          # Releasing the version package.json already carries is normal — the
+          # first release of all, or a re-run after a failed one. There is just
+          # nothing to commit, and `git commit` calls that an error.
+          if git diff --cached --quiet; then
+            echo "package.json is already ${VERSION} — tagging as-is"
+          else
+            git commit -m "release: v${VERSION}"
+          fi
           git tag "v${VERSION}"
           git push origin HEAD:"${GITHUB_REF_NAME}"
           git push origin "v${VERSION}"
