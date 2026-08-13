@@ -63,12 +63,17 @@
   #bubble-zone.show::after { opacity: 1; }
   #bubble-zone.important::after { background: #ffd76e; }
 
-  /* Stats line: real telemetry in text; fiction lives in body language */
+  /* Stats line: real telemetry in text; fiction lives in body language.
+     On demand — a desktop pet that permanently wears a status bar is a widget.
+     pet.js raises it when the cursor comes near (see updateHover). */
   #stats-zone {
     position: absolute; left: 0; right: 0; bottom: 6px;
     display: flex; flex-direction: column; align-items: center; gap: 4px;
     pointer-events: none;
+    opacity: 0; transform: translateY(3px);
+    transition: opacity 140ms steps(3), transform 140ms steps(3);
   }
+  #stats-zone.show { opacity: 1; transform: translateY(0); }
   /* A small pixel plate rather than floating text: same cream paper, hard
      border and hard shadow as the speech bubble, so the two read as a set. */
   .pill {

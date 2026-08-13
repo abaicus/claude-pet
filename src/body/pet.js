@@ -10,9 +10,12 @@ const bubbleEl = document.getElementById('bubble');
 const bubbleZone = document.getElementById('bubble-zone');
 const statsEl = document.getElementById('stats');
 const stripEl = document.getElementById('strip');
+const statsZone = document.getElementById('stats-zone');
 
 const LOGICAL_H = 130;      // art box height (see art.js)
-const FOOT_MARGIN = 46;     // px above window bottom where feet sit
+// Where the feet sit above the window bottom. main.js sizes the window from
+// this same table (PetArt.boxHeight) — read it, never retype it.
+const FOOT_MARGIN = PetArt.LAYOUT.footRoom;
 
 let state = null;           // latest brain state
 let lastFxSeq = 0;
@@ -99,7 +102,7 @@ function consume(s) {
 
   // bubble zone anchors just above THIS form's head at current scale
   const g = PetArt.GEOM[s.form] || PetArt.GEOM.hatchling;
-  const headroom = FOOT_MARGIN + (g.h + 14) * (s.scale || 1);
+  const headroom = FOOT_MARGIN + (g.h + PetArt.LAYOUT.headGap) * (s.scale || 1);
   bubbleZone.style.bottom = Math.min(headroom, innerHeight - 60) + 'px';
   bubbleZone.style.top = '4px';
 }
@@ -151,6 +154,27 @@ function maybeIdle(t) {
     glanceUntil = t + IDLE_DUR.look;
     nextGlanceAt = Math.max(nextGlanceAt, glanceUntil + 1500);
   }
+}
+
+// ------------------------------------------------------------------ hover
+// The details are on demand: the pet is a clean silhouette until you reach for
+// it, and the numbers come up under your cursor. Driven off the cursor feed
+// rather than CSS :hover, because a click-through pet never receives a
+// mouseover — and because the window's invisible corners are not "the pet".
+let hoverUntil = 0;
+function updateHover(t, scale, feetY) {
+  const g = (state && PetArt.GEOM[state.form]) || PetArt.GEOM.hatchling;
+  const x = innerWidth / 2 + cursor.dx;      // the feed is measured from…
+  const y = innerHeight * 0.6 + cursor.dy;   // …(centre, 60% down) — see main.js
+  // Wide open below the feet, where a long stats line overhangs the sprite;
+  // snug around the body above it.
+  const halfW = y > feetY - 4 ? innerWidth / 2 : Math.max(80, g.w * scale / 2 + 26);
+  const near = Math.abs(x - innerWidth / 2) < halfW &&
+    y > feetY - g.h * scale - 20 && y < innerHeight + 6;
+  // A grace period, so walking down the body to actually read the thing can
+  // never flicker it away on the way.
+  if (near) hoverUntil = t + 400;
+  statsZone.classList.toggle('show', t < hoverUntil);
 }
 
 function spawnConfetti(n, big) {
@@ -394,6 +418,7 @@ function frame(t) {
   const scale = s.scale || 1;
   const cx = innerWidth / 2;
   const feetY = innerHeight - FOOT_MARGIN;
+  updateHover(t, scale, feetY);
 
   ctx2d.save();
   ctx2d.translate(cx, feetY - PetArt.FEET_Y * scale);

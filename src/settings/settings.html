@@ -74,6 +74,7 @@
   }
   .label em { font-style: normal; letter-spacing: 0.5px; opacity: 0.6; font-size: 10px; }
   .row { display: flex; align-items: center; gap: 12px; font-size: 13px; margin: 10px 0; }
+  .row em { font-style: normal; font-size: 11px; opacity: 0.5; } /* what a toggle actually does */
   .row:first-of-type { margin-top: 0; }
   .row > label, .row > .grow { flex: 1; }
   .note { font-size: 11px; line-height: 1.5; opacity: 0.6; margin-top: 10px; }
@@ -198,7 +199,7 @@
     <div class="section">
       <div class="label">SHOW</div>
       <div class="row"><label for="t-bubbles">speech bubbles</label><input type="checkbox" id="t-bubbles"></div>
-      <div class="row"><label for="t-stats">stats line</label><input type="checkbox" id="t-stats"></div>
+      <div class="row"><label for="t-stats">stats line <em>on hover</em></label><input type="checkbox" id="t-stats"></div>
       <div class="row"><label for="t-glow">glow</label><input type="checkbox" id="t-glow"></div>
       <div class="row"><span>size</span><input type="range" id="scale" min="1" max="2.5" step="0.25"><span id="scale-label" class="val"></span></div>
     </div>

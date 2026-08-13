@@ -261,6 +261,39 @@ test('the stats line shows Claude\'s todo progress, then stops when it\'s stale'
   assert.ok(!brain.statsLine(T0).text.includes('☑'));
 });
 
+test('the volume slider samples the level it is setting', () => {
+  const { brain, setNow } = makeBrain();
+  const sounds = () => brain.getRenderState().sounds.map(s => s.name);
+
+  // Muted: moving the slider is silent. Muted means muted.
+  brain.command({ type: 'setSound', volume: 0.5 });
+  assert.deepEqual(sounds(), [], 'a muted pet must not blurt out a sample');
+
+  // Switching sound on chimes once, wherever it was switched on from.
+  brain.command({ type: 'setSound', on: true });
+  assert.deepEqual(sounds(), ['ding']);
+
+  brain.command({ type: 'setSound', volume: 0.8 });
+  assert.equal(sounds().pop(), 'pet', 'a new level should be audible at once');
+
+  // `input` fires on every notch of a drag — one sample, not a burst.
+  let t = T0;
+  const before = sounds().length;
+  for (const v of [0.75, 0.7, 0.65, 0.6]) {
+    t += 20; setNow(t);
+    brain.command({ type: 'setSound', volume: v });
+  }
+  assert.equal(sounds().length, before, 'a drag machine-gunned the sample');
+  setNow(t + 200);
+  brain.command({ type: 'setSound', volume: 0.55 });
+  assert.equal(sounds().length, before + 1, 'the sample never came back after the throttle');
+
+  // Silence at the bottom of the slider is the correct sample of silence.
+  setNow(t + 1000);
+  brain.command({ type: 'setSound', volume: 0 });
+  assert.equal(sounds().length, before + 1);
+});
+
 test('debug event presets all resolve through the real reducer', () => {
   const { brain } = makeBrain();
   // Every button the settings window offers must hit a preset that exists;

@@ -58,6 +58,7 @@ class Brain extends EventEmitter {
     this.soundQueue = [];      // [{seq, name, important}]
     this.hooksStatus = { installed: false, ok: true, reason: null };
     this.lastGossipAt = 0;
+    this.volumeSampleAt = 0;   // a slider drag must not machine-gun the sample
     this.replayDone = false;
     this.log = [];             // recent events for the debug log view
     this.emitScheduled = false;
@@ -334,8 +335,22 @@ class Brain extends EventEmitter {
         break;
       }
       case 'setSound': {
+        const wasOn = !!this.prefs.soundOn;
         if (cmd.on !== undefined) this.prefs.soundOn = !!cmd.on;
-        if (cmd.volume !== undefined) this.prefs.volume = Math.max(0, Math.min(1, Number(cmd.volume) || 0));
+        if (cmd.volume !== undefined) {
+          const v = Math.max(0, Math.min(1, Number(cmd.volume) || 0));
+          const moved = v !== this.prefs.volume;
+          this.prefs.volume = v;
+          // A volume slider you can't hear is a slider you have to guess at, so
+          // sample the new level as it moves. Throttled — `input` fires on every
+          // notch of a drag — and silent while muted, because muted means muted.
+          if (moved && this.prefs.soundOn && v > 0 && now - this.volumeSampleAt > 140) {
+            this.volumeSampleAt = now;
+            this.applyFx([{ type: 'sound', name: 'pet' }]);
+          }
+        }
+        // Hear what you just switched on, wherever you switched it on from.
+        if (!wasOn && this.prefs.soundOn) this.applyFx([{ type: 'sound', name: 'ding' }]);
         break;
       }
       case 'setClickThrough': {
@@ -345,6 +360,8 @@ class Brain extends EventEmitter {
       case 'setPosition': {
         if (cmd.position && typeof cmd.position.x === 'number' && typeof cmd.position.y === 'number') {
           this.prefs.position = { x: Math.round(cmd.position.x), y: Math.round(cmd.position.y) };
+          // A corner means nothing without the box it belongs to.
+          if (cmd.boxH > 0) this.prefs.boxH = Math.round(cmd.boxH);
         }
         break;
       }

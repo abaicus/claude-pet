@@ -45,6 +45,24 @@
     GEOM[name] = { w: F.w * PX, h: (F.h + TOP_EXTRA[F.ears] + (F.crest ? 2 : 0)) * PX };
   }
 
+  // The window box, shared by the two files that have to agree on it: main.js
+  // sizes the pet window with boxHeight(), pet.js lays these same numbers out
+  // inside it. A duplicated 46 on one side only is a window that no longer
+  // fits its pet.
+  //
+  // It is grown and shrunk to fit the creature rather than fixed, because
+  // macOS refuses to place any window above the menu bar: every unreserved
+  // pixel up here is a pixel the pet can never be dragged past.
+  const LAYOUT = {
+    footRoom: 46,    // under the feet — the stats pills stack in here
+    headGap: 14,     // logical units of air between the head and the tail
+    bubbleRoom: 74   // above that: three lines of speech, its border and shadow
+  };
+  function boxHeight(form, scale) {
+    const g = GEOM[form] || GEOM.hatchling;
+    return Math.round(LAYOUT.footRoom + (g.h + LAYOUT.headGap) * (scale || 1) + LAYOUT.bubbleRoom);
+  }
+
   const EGG = { light: '#f7f0e2', mid: '#e6dac2', dark: '#cdbc9c', outline: '#8a7a5e', speck: '#c0ab86' };
 
   // ---------------------------------------------------------------- utils
@@ -488,7 +506,7 @@
     return out;
   }
 
-  const PetArt = { drawPet, GEOM, FEET_Y, PX, shade, bodyColor };
+  const PetArt = { drawPet, GEOM, FEET_Y, PX, LAYOUT, boxHeight, shade, bodyColor };
   if (typeof module !== 'undefined' && module.exports) module.exports = PetArt;
   else global.PetArt = PetArt;
 

@@ -7,8 +7,15 @@ const path = require('path');
 const { Brain } = require('./brain/brain');
 const { IPC, petDir, claudeSettingsPath } = require('./shared/constants');
 const { trayIconPngs } = require('./chrome/tray-icon');
+const PetArt = require('./body/art'); // geometry only — it draws nothing here
 
-const PET_W = 320, PET_H = 420;
+const PET_W = 320;
+// Height is NOT fixed: it is exactly the creature plus its speech room, and it
+// changes when the pet grows or the size slider moves. macOS will not place a
+// window above the menu bar, so a tall box is a pet that can never be dragged
+// into the top of the screen — 420px of it kept the feet below y≈400 always.
+const petHeight = (rs) => PetArt.boxHeight(rs.form, rs.scale);
+const LEGACY_BOX_H = 420;   // the fixed height every position was saved against
 
 let brain;
 let petWin = null;
@@ -25,11 +32,15 @@ function createPetWindow() {
   const pos = brain.prefs.position;
   const display = screen.getPrimaryDisplay();
   const wa = display.workArea;
+  const h = petHeight(brain.getRenderState());
+  // The saved position is a top-left CORNER, and the box it was a corner of
+  // may not be this one — an upgrade from the old fixed 420 shrinks it by
+  // half. Put the feet back where they were rather than the corner.
   const x = pos ? pos.x : wa.x + wa.width - PET_W - 40;
-  const y = pos ? pos.y : wa.y + wa.height - PET_H - 20;
+  const y = pos ? pos.y + ((brain.prefs.boxH || LEGACY_BOX_H) - h) : wa.y + wa.height - h - 20;
 
   petWin = new BrowserWindow({
-    x, y, width: PET_W, height: PET_H,
+    x, y, width: PET_W, height: h,
     frame: false, transparent: true, resizable: false,
     alwaysOnTop: true, hasShadow: false, skipTaskbar: true,
     fullscreenable: false, minimizable: false, maximizable: false,
@@ -50,8 +61,27 @@ function createPetWindow() {
   const b = petWin.getBounds();
   const disp = screen.getDisplayMatching(b).workArea;
   if (b.x > disp.x + disp.width - 60 || b.y > disp.y + disp.height - 60 || b.x < disp.x - PET_W + 60 || b.y < disp.y - 60) {
-    petWin.setPosition(disp.x + disp.width - PET_W - 40, disp.y + disp.height - PET_H - 20);
+    petWin.setPosition(disp.x + disp.width - PET_W - 40, disp.y + disp.height - h - 20);
   }
+  savePosition(); // …including the box it now belongs to, migrated or not
+}
+
+function savePosition() {
+  const b = petWin.getBounds();
+  brain.command({ type: 'setPosition', position: { x: b.x, y: b.y }, boxH: b.height });
+}
+
+// Grow/shrink the window to the current form and size. The FEET stay where
+// they are — the pet must not jump when it levels up or the slider moves —
+// so the top edge is what travels.
+function fitPetWindow(rs) {
+  if (!petWin || petWin.isDestroyed()) return;
+  const want = petHeight(rs);
+  const b = petWin.getBounds();
+  if (b.height === want) return;
+  petWin.setBounds({ x: b.x, y: b.y + b.height - want, width: b.width, height: want });
+  if (wander) wander.home.y = petWin.getBounds().y; // a stroll comes home to the new box
+  savePosition();                                   // the OS may have clamped it — save what stuck
 }
 
 function createSettingsWindow() {
@@ -74,6 +104,7 @@ function createSettingsWindow() {
 }
 
 function broadcast(state) {
+  fitPetWindow(state);
   for (const win of [petWin, settingsWin]) {
     if (win && !win.isDestroyed()) win.webContents.send(IPC.state, state);
   }
@@ -130,9 +161,7 @@ function togglePetVisible() {
 }
 
 function toggleSound() {
-  const on = !brain.prefs.soundOn;
-  brain.command({ type: 'setSound', on });
-  if (on) brain.command({ type: 'playSound', name: 'ding' }); // hear what you turned on
+  brain.command({ type: 'setSound', on: !brain.prefs.soundOn }); // the brain chimes
   rebuildTray();
 }
 
@@ -264,10 +293,7 @@ function wireIpc() {
       const b = petWin.getBounds();
       petWin.setPosition(b.x + Math.round(dx), b.y + Math.round(dy));
     }
-    if (done) {
-      const b = petWin.getBounds();
-      brain.command({ type: 'setPosition', position: { x: b.x, y: b.y } });
-    }
+    if (done) savePosition();
   });
 
   ipcMain.on(IPC.closeSettings, () => {

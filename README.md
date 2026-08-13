@@ -6,8 +6,8 @@ coding sessions and reacts; it never interferes with them.
 
 Beyond the toy: it taps you on the shoulder when Claude is blocked waiting on
 you (notification relay with chime, bypasses mute), and it surfaces live
-context-usage telemetry per session in a stats line
-(`Pixel lv.6 │ 2 sessions │ ctx ~72% │ 41k/5h │ ✓×5 │ ☑ 3/7`).
+context-usage telemetry per session in a stats line you raise by putting the
+cursor on it (`Pixel lv.6 │ 2 sessions │ ctx ~72% │ 41k/5h │ ✓×5 │ ☑ 3/7`).
 
 ## Run
 
@@ -26,7 +26,13 @@ the hook script is fire-and-forget and can never block or fail a session.
 
 - **Left-click** the pet: petting (~45% of the time it answers with a real
   session fact). **Double-click**: cookie treat (5-min cooldown).
-- **Drag** anywhere; position persists.
+- **Hover** it: the stats line and per-session strip come up under the feet,
+  and drop away again when you leave. A pet that permanently wears a status
+  bar is a widget; the numbers are there when you reach for them.
+- **Drag** anywhere; position persists. The window is only ever as tall as the
+  creature plus its speech room — macOS will not place a window above the menu
+  bar, so a fixed tall box is a pet that cannot be dragged near the top of the
+  screen.
 - **Right-click** or the **tray icon**: settings, treat, hide/show, sounds,
   click-through, reinstall/uninstall hooks, quit.
 - **Shortcuts** (real global ones — a tray menu accelerator is only a label
@@ -40,7 +46,8 @@ the hook script is fire-and-forget and can never block or fail a session.
   `⌘⌥P` is the escape hatch: a click-through pet can't offer its own way back.
 - **Settings**: name, 12 palettes, 12 level-locked accessories, speech
   bubble / stats line / glow toggles, size slider, sounds (synthesized
-  chiptune, **off by default** — important notifications always chime),
+  chiptune, **off by default** — important notifications always chime; the
+  volume slider samples the level as you drag it, and stays quiet when muted),
   danger-zone reset (survives: customization, sound settings, event cursor),
   and debug sections (set level/stats, fire fake events through the real
   reducer, trigger any animation or sound). `esc` or `✕` closes it.

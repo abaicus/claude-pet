@@ -60,7 +60,10 @@ function defaultPrefs() {
     soundOn: false,        // off by default — deliberate
     volume: 0.7,
     clickThrough: false,
-    position: null         // {x, y} — persists separately from pet state
+    position: null,        // {x, y} — persists separately from pet state
+    boxH: null             // …and the window height it was a corner of, so the
+                           // FEET can be put back where they were even if the
+                           // box has changed size since (see main.js)
   };
 }
 
