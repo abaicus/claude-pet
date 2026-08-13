@@ -215,10 +215,12 @@ jobs:
           cd tap
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- Casks/claude-pet.rb; then
+          # Staged before comparing: on the first release into a fresh tap the
+          # cask is untracked, and `git diff` is silent about untracked files.
+          git add Casks/claude-pet.rb
+          if git diff --cached --quiet; then
             echo "cask already at v${VERSION}"
             exit 0
           fi
-          git add Casks/claude-pet.rb
           git commit -m "claude-pet ${VERSION}"
           git push
