@@ -6,30 +6,124 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A second push to a branch makes the first one's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
+    name: test (node ${{ matrix.node }})
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20 is the floor the app is expected to run on and the version whose
+        # missing glob support broke `npm test` once; 22 is what most people
+        # developing this actually have.
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  package:
+    name: package
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
 
       # Packaging breaks in ways the unit tests cannot see — a file left out of
-      # the asar, a config that no longer parses. --dir stops before the DMG,
-      # which is the slow half and not what tends to break.
-      - name: Package smoke test
+      # the asar, a config that no longer parses, an app that will not launch
+      # on Apple Silicon for want of a signature. --dir stops before the DMG,
+      # which is the slow half and not the half that tends to break.
+      - name: Build the app bundle
+        run: npx electron-builder --mac --dir --arm64 --config electron-builder.config.js
+
+      - name: The bundle is signed, complete and launchable
         run: |
           set -euo pipefail
-          npx electron-builder --mac --dir --arm64 --config electron-builder.config.js
           app="dist/mac-arm64/Claude Pet.app"
           test -d "$app"
-          codesign --verify --verbose "$app"
-          # Every window the app can open must actually be inside the bundle.
-          for f in src/body/pet.html src/settings/settings.html src/onboarding/onboarding.html; do
+
+          # Ad-hoc is the floor: an unsigned binary is killed outright on
+          # Apple Silicon, so a build that lost its signature is a build
+          # nobody can run.
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | grep -q 'Signature=adhoc'
+
+          # Every window the app can open must be inside the bundle. A missing
+          # HTML file does not crash the app — it opens a blank window.
+          for f in src/body/pet.html src/settings/settings.html src/onboarding/onboarding.html \
+                   src/body/art.js src/capture/hook.js package.json; do
             npx asar list "$app/Contents/Resources/app.asar" | grep -qx "/$f" \
               || { echo "::error::$f is missing from app.asar"; exit 1; }
           done
+
+          # …and the developer-only weight must not be.
+          for f in test scripts mockups docs; do
+            if npx asar list "$app/Contents/Resources/app.asar" | grep -q "^/$f/"; then
+              echo "::error::$f/ was packaged into the app"; exit 1
+            fi
+          done
+
+          plist="$app/Contents/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" \
+             = "$(node -p 'require("./package.json").version')"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$plist"
+
+      # The app draws every pixel it owns, including its icon, so a change to
+      # art.js can break the icon generator — which nothing else would notice
+      # until a release shipped with a stale one.
+      #
+      # A crash or an unreadable icon fails. A byte difference only warns: two
+      # machines rasterizing the same gradient are not guaranteed to agree to
+      # the pixel, and a false red build teaches people to ignore red builds.
+      - name: The icon generator still runs, and still agrees
+        run: |
+          set -euo pipefail
+          before=$(shasum -a 256 build/icon.png | cut -d' ' -f1)
+          npx electron scripts/make-icon.js
+          test -s build/icon.icns && test -s build/icon.png
+          test "$(sips -g pixelWidth build/icon.png | awk '/pixelWidth/{print $2}')" = "1024"
+          after=$(shasum -a 256 build/icon.png | cut -d' ' -f1)
+          if [ "$before" != "$after" ]; then
+            echo "::warning::build/icon.png differs from what scripts/make-icon.js just drew — if art.js changed, run 'npm run icon' and commit the result"
+          fi
+
+  cask:
+    name: cask
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # The cask is Ruby that nothing in this repo executes, shipped to users
+      # by a workflow that cannot tell a valid one from a broken one. Homebrew
+      # can, so it is asked on every push rather than after a bad release.
+      - name: Lint the rendered cask
+        run: |
+          set -euo pipefail
+          tap="$(brew --repository)/Library/Taps/abaicus/homebrew-tap"
+          mkdir -p "$tap/Casks"
+          git -C "$tap" init -q
+          node scripts/render-cask.js 9.9.9 \
+            "$(printf 'a%.0s' {1..64})" "$(printf 'b%.0s' {1..64})" \
+            "$tap/Casks/claude-pet.rb"
+          cat "$tap/Casks/claude-pet.rb"
+          ruby -c "$tap/Casks/claude-pet.rb"
+          brew style abaicus/tap
+          brew audit --cask abaicus/tap/claude-pet

@@ -1,113 +1,99 @@
+<div align="center">
+
 # claude-pet
 
-A desktop tamagotchi that floats above all windows and feeds on Claude Code
-activity. No dock icon, no window chrome — a critter, not an app. It observes
-coding sessions and reacts; it never interferes with them.
+**A desktop tamagotchi that feeds on your Claude Code sessions.**
 
-Beyond the toy: it answers "which terminal is waiting on me?". Every live
-session gets its own line under the pet saying exactly what it is doing, and
-the pet wears a `!` for as long as one of them is actually blocked on you.
+It floats above your windows, eats the work you do, grows — and tells you
+which terminal is waiting on you.
 
-```
-              Pixel lv.6 │ 41k/5h │ ✓×5 │ ☑ 3/7
-    ! claudy-pet · needs permission 12s · ~34%     ← amber: it cannot continue
-    … api-server · waiting for you 4m · ~71%
-    ✓ web · done 2m · ~18%                         ← your turn
-    ▸ docs-site · working · ~9%                     ← needs nothing from you
-```
+[![release](https://img.shields.io/github/v/release/abaicus/claude-pet?color=4fbf96&label=release)](https://github.com/abaicus/claude-pet/releases/latest)
+[![macOS](https://img.shields.io/badge/macOS-10.15%2B-2b2b2b)](https://github.com/abaicus/claude-pet/releases/latest)
+[![CI](https://github.com/abaicus/claude-pet/actions/workflows/ci.yml/badge.svg)](https://github.com/abaicus/claude-pet/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-2b2b2b)](LICENSE)
+
+<img src="docs/media/pet.png" width="360" alt="The pet, with a speech bubble and a status line for each live Claude session">
+
+</div>
 
 ## Install
 
-macOS 10.15+, Apple Silicon or Intel.
-
-```bash
+```sh
 brew install --cask abaicus/tap/claude-pet
 ```
 
-Or grab the disk image from [the latest
-release](https://github.com/abaicus/claude-pet/releases/latest) — `arm64` for
+Or download the disk image from **[the latest
+release](https://github.com/abaicus/claude-pet/releases/latest)** — `arm64` for
 Apple Silicon, `x64` for Intel — and drag it to Applications. The build is
 ad-hoc signed but not notarized by Apple, so a DMG install needs the quarantine
-flag cleared once (the cask does this for you):
+flag cleared once (the Homebrew cask does this for you):
 
-```bash
+```sh
 xattr -dr com.apple.quarantine "/Applications/Claude Pet.app"
 ```
 
-From source:
+macOS 10.15+. Launch it and it does the rest: it installs its Claude Code hooks
+and walks you through a four-step intro — what it is, what it just wrote to
+your config, then name, colour, sound and size. Every control in the intro is
+live, so there is nothing to apply and nothing to undo.
 
-```bash
-npm install
-npm start
+## Which terminal is waiting on you?
+
+That is the real reason this exists. Four Claude sessions buried behind each
+other all look identical from the outside, and the one blocked on a permission
+prompt looks exactly like the one happily working.
+
+So every live session gets its own line under the pet:
+
+```
+      Pixel lv.12 │ 46k/5h │ ✓×5 │ ☑ 3/7        ← the pet itself
+  ! claudy-pet · needs permission 17s · ~34%     ← amber: it cannot continue
+  … api-server · waiting for you 4m · ~71%
+  ✓ web · done 2m · ~18%                         ← your turn
+  ▸ docs-site · working · ~9%                    ← needs nothing from you
 ```
 
-On first launch the app installs Claude Code hooks into
-`~/.claude/settings.json` (idempotent, preserves your existing settings,
-refuses to touch a config it can't parse — uninstall from the tray removes
-exactly its own entries). Events append to `~/.claude-pet/events.jsonl`;
-the hook script is fire-and-forget and can never block or fail a session.
+Sorted by who is blocked on whom: what can't continue without you comes first,
+what is happily working comes last. The pet **wears a `!`** for as long as any
+session is actually blocked — not for the second the notification arrives, but
+until that session moves again, because "I can't continue" has to survive the
+moment you were looking somewhere else.
 
-A four-step intro opens the same launch: what the pet is and that it only ever
-watches, what it just wrote to your Claude settings and what it does and does
-not record, then name / colour / sound / size, then how to live with it. Every
-control in it is live — it sends the same commands the settings window does, so
-there is nothing to apply and nothing to undo. Closing it by any route counts
-as done (an intro that reappears every launch is a nag), and **right-click →
-Intro…** replays it. It shows only for a genuinely new pet: a prefs file that
-predates the intro belongs to somebody who already has one.
+The `~%` is how full each session's context is, read from the transcript rather
+than guessed. A context it hasn't read is *absent*, never `0%`.
 
-## Using it
+The lines are on hover — a desktop pet that permanently wears a status bar is a
+widget, so the numbers come up when you reach for them and drop away when you
+leave.
 
-- **Left-click** the pet: petting (~45% of the time it answers with a real
-  session fact). **Double-click**: cookie treat (5-min cooldown).
-- **Hover** it: the stats line and the per-session lines come up under the
-  feet, and drop away again when you leave. A pet that permanently wears a
-  status bar is a widget; the numbers are there when you reach for them. The
-  window grows to fit them, feet planted, so the pet never jumps.
-- **A finished turn announces itself** by project (`claudy-pet · your turn~ ✓`,
-  once per session per 25s), a permission prompt relays Claude's own words in
-  amber, and the `!` badge stays up until that session does something —
-  answering the prompt clears it.
-- **Drag** anywhere; position persists. The window is only ever as tall as the
-  creature plus its speech room — macOS will not place a window above the menu
-  bar, so a fixed tall box is a pet that cannot be dragged near the top of the
-  screen.
-- **Right-click** or the **tray icon**: settings, treat, hide/show, sounds,
-  click-through, reinstall/uninstall hooks, quit.
-- **Shortcuts** (real global ones — a tray menu accelerator is only a label
-  on macOS, so each is registered for real, and the menu shows a key only if
-  the OS actually granted it):
+## It grows on you
 
-  | `⌘⌥,` settings | `⌘⌥T` treat | `⌘⌥V` hide/show |
-  |---|---|---|
-  | **`⌘⌥M`** sounds | **`⌘⌥P`** click-through | **`⌘⌥Q`** quit |
+<img src="docs/media/forms.png" width="100%" alt="The seven forms: egg, hatchling, junior, senior, elder, principal, legend">
 
-  `⌘⌥P` is the escape hatch: a click-through pet can't offer its own way back.
-- **Settings**, in three tabs (click, `←`/`→`, or `⌘1`–`⌘3`):
-  - *Settings* — name, sounds (synthesized chiptune, **off by default** —
-    important notifications always chime; the volume slider samples the level
-    as you drag it, and stays quiet when muted), hook install/uninstall, and a
-    danger-zone reset (survives: customization, sound settings, event cursor).
-  - *Appearance* — 12 palettes, 27 level-locked accessories, speech bubble /
-    stats line / glow toggles, size slider.
-  - *Debug* — set level and stats, fire fake events through the real reducer,
-    trigger any animation or sound. Kept behind its own tab so the two tabs
-    you actually use aren't a wall of test buttons.
+Levels 0–25 across seven forms, on xp from commits, green tests, PRs, deploys
+and edits. Every form is a different **silhouette**, never a recolor. Every
+level from 1 up unlocks something to wear — 27 accessories, one per level.
 
-  `esc` or `✕` closes it.
-
-Every sprite is pixel art drawn on an integer grid at runtime — no image
-files. The silhouette's per-row half-width table places the face, ears and
-every accessory, so nothing floats off the body; the palette hues the whole
-creature. It is never quite still: it breathes, blinks, glances around, and
-fidgets every few seconds (a look, a stretch, a bounce, a shimmy) — all of
-that is the renderer's own business, the same as blinking, and the brain has
-no opinion about it. The pet levels 0–25 through seven forms (egg → hatchling
-→ junior → senior → elder → principal → legend) on xp from commits, green
-tests, PRs, deploys and edits, and every level from 1 up unlocks something to
-wear. The ladder is append-only: the first eleven rungs are frozen, because
+The ladder is append-only: the first eleven rungs are frozen, because
 re-spacing them would silently demote every pet already standing on one.
-Context warnings fire once at ~75% and ~90% per session and re-arm below 60%.
+
+## Make it yours
+
+<table>
+<tr>
+<td width="50%"><img src="docs/media/appearance.png" alt="Appearance tab: 12 palettes and the level-locked accessory wardrobe"></td>
+<td width="50%"><img src="docs/media/settings.png" alt="Settings tab: name, sounds, Claude hooks, and a reset"></td>
+</tr>
+<tr>
+<td>12 palettes, 27 accessories, a size slider, and toggles for the speech
+bubble, stats line and glow.</td>
+<td>Name it, install or remove its hooks, and turn on chiptune sound —
+synthesized in code, off by default.</td>
+</tr>
+</table>
+
+Changes apply instantly; there is no Save button. `⌘1`–`⌘3` moves between tabs,
+`esc` closes.
 
 ## What it notices
 
@@ -137,6 +123,45 @@ The hook payloads carry far more than "a tool ran", so the pet reads them:
   keyboard. `SubagentStop` deliberately does not — a helper finishing is not
   the turn finishing, and saying so would be a lie about whose move it is.
 
+## What it records about you
+
+It watches your sessions, so this matters more than the rest of the README:
+
+- It records the **length** of your prompt and **not one character of its
+  text**.
+- Everything it keeps lives in `~/.claude-pet/` as human-readable JSON. Nothing
+  is sent anywhere — there is no network code in this app.
+- The hook script is fire-and-forget: it appends one line and exits, and it
+  can never block, slow or fail a Claude session.
+- Installing hooks appends to `~/.claude/settings.json` and preserves the rest
+  of your config. It refuses to touch a config it can't parse, and
+  **uninstalling removes exactly its own entries** — from the tray, or the
+  settings window.
+
+It also never lies about what it read: estimates are labeled `~`, and data it
+can't read is left out rather than faked.
+
+## Living with it
+
+- **Left-click** to pet it (~45% of the time it answers with a real fact about
+  your session). **Double-click** for a cookie.
+- **Drag** it anywhere; the position sticks. The window is only ever as tall as
+  the creature plus its speech room.
+- **Right-click** or use the **tray icon** for settings, a treat, hide/show,
+  sounds, click-through, hooks and quit.
+- **Global shortcuts** — real ones, registered with the OS:
+
+  | | | |
+  |---|---|---|
+  | `⌘⌥,` settings | `⌘⌥T` treat | `⌘⌥V` hide/show |
+  | `⌘⌥M` sounds | `⌘⌥P` click-through | `⌘⌥Q` quit |
+
+  `⌘⌥P` is the escape hatch: a click-through pet can't offer its own way back.
+
+Every sprite is pixel art drawn on an integer grid at runtime — no image files
+anywhere in the app, including its own icon. It is never quite still: it
+breathes, blinks, glances around, and fidgets every few seconds.
+
 ### A noise it can't explain is a bug
 
 Every chime comes with words. A reaction says its own line if it has one — and
@@ -147,8 +172,7 @@ sound itself supplies the words: each of the 55 motifs is mapped to a phrase
 pool, and the brain speaks from it whenever a reaction chirped and nothing
 more specific was said. Otherwise you hear a blip, look up, and have no way of
 finding out what the pet just noticed. One test walks the motif table to prove
-no sound can play in silence; the rule runs once per event, over the whole
-batch of effects, so a generic line can never elbow out a specific one.
+no sound can play in silence.
 
 ### Where the context number comes from
 
@@ -165,20 +189,29 @@ per-model table; or, if a reading comes in bigger than the table allows, the
 reading itself. That last rule exists because a flat 200k assumption once had
 the pet cheerfully announcing `ctx ~180%`.
 
-A context it has not read is *absent*, not `0%` — the stats line simply leaves
-it out until there is something real to say.
+Context warnings fire once at ~75% and ~90% per session, and re-arm below 60%.
 
-It never lies: estimates are labeled `~` (an edit's own line counts are not a
-git diff, so they carry one; git's numbers don't), and data it can't read is
-absent, never faked. It records the **length** of your prompt and not one
-character of its text.
+## Uninstall
+
+```sh
+brew uninstall --cask claude-pet          # or drag the app to the Trash
+```
+
+Remove its hooks first (tray → *uninstall hooks*, or the settings window) if
+you want your `~/.claude/settings.json` cleaned up — the app only ever removes
+its own entries. `brew uninstall --zap --cask claude-pet` also deletes
+`~/.claude-pet`; it deliberately leaves your Claude config alone.
 
 ## Development
 
-```bash
+```sh
+npm install
+npm start                                 # run from source
+
 npm test                                  # headless brain tests (node:test)
 npm run dist                              # DMG + ZIP for both arches → dist/
 npm run icon                              # redraw build/icon.icns from art.js
+npm run shots                             # re-render the README screenshots
 npx electron scripts/shoot-mockups.js     # render art mockups to mockups/*.png
 ```
 
@@ -187,15 +220,21 @@ in [docs/releasing.md](docs/releasing.md).
 
 Sandboxing for development — never touches your real config:
 
-```bash
+```sh
 CLAUDE_PET_DIR=/tmp/pet-sandbox \
 CLAUDE_PET_SETTINGS=/tmp/pet-sandbox/settings.json \
 npm start
 ```
 
-Debug env: `CLAUDE_PET_NO_HOOKS=1` (skip hook install),
-`CLAUDE_PET_SHOT=/path.png` / `CLAUDE_PET_SHOT_SETTINGS=/path.png` +
-`CLAUDE_PET_SHOT_DELAY=ms` (window screenshots).
+Debug env: `CLAUDE_PET_NO_HOOKS=1` (skip hook install), and for screenshots
+`CLAUDE_PET_SHOT=/path.png` / `CLAUDE_PET_SHOT_SETTINGS=/path.png` with
+`CLAUDE_PET_SHOT_DELAY=ms`, `CLAUDE_PET_SHOT_HOVER=1` (raise the stats line)
+and `CLAUDE_PET_SHOT_TAB=appearance`.
+
+Every screenshot in this README is generated by `npm run shots`, which seeds a
+sandbox with the same `events.jsonl` the hooks write and the same transcripts
+Claude Code leaves behind, then lets the app photograph itself. Nothing here is
+mocked up — if a number in a screenshot is wrong, the app is wrong.
 
 ### Architecture
 
@@ -219,3 +258,7 @@ src/
 State lives in `~/.claude-pet/` as human-readable versioned JSON
 (`state.json` progression · `prefs.json` customization · `cursor.json`
 read offsets). Players may cheat; that's a feature.
+
+## License
+
+[MIT](LICENSE)

@@ -19,6 +19,7 @@
     "start": "electron .",
     "test": "node --test test/*.test.js",
     "icon": "electron scripts/make-icon.js",
+    "shots": "node scripts/shoot-readme.js",
     "pack": "electron-builder --mac --dir --config electron-builder.config.js",
     "dist": "electron-builder --mac --config electron-builder.config.js"
   },

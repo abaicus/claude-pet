@@ -374,6 +374,17 @@ app.whenReady().then(() => {
 
   // Dev/debug: screenshot the pet window (CLAUDE_PET_SHOT=/path/out.png)
   if (process.env.CLAUDE_PET_SHOT) {
+    // CLAUDE_PET_SHOT_HOVER parks a cursor on the pet so the stats line and
+    // the session lines are UP for the shot. Hover is driven by the cursor
+    // feed (see startCursorFeed), and a screenshot cannot move a mouse — so
+    // the real feed is replaced rather than raced with.
+    if (process.env.CLAUDE_PET_SHOT_HOVER) {
+      if (cursorTimer) clearInterval(cursorTimer);
+      cursorTimer = setInterval(() => {
+        if (!petWin || petWin.isDestroyed()) return;
+        petWin.webContents.send(IPC.cursor, { dx: 0, dy: 40, walking: false, facing: 0 });
+      }, 100);
+    }
     setTimeout(async () => {
       try {
         const img = await petWin.webContents.capturePage();
@@ -386,6 +397,13 @@ app.whenReady().then(() => {
     createSettingsWindow();
     setTimeout(async () => {
       try {
+        // Which tab to shoot. The window always opens on the first one, and
+        // the wardrobe lives on another.
+        if (process.env.CLAUDE_PET_SHOT_TAB) {
+          await settingsWin.webContents.executeJavaScript(
+            `showTab(${JSON.stringify(process.env.CLAUDE_PET_SHOT_TAB)})`);
+          await new Promise(r => setTimeout(r, 200));
+        }
         if (process.env.CLAUDE_PET_SHOT_SCROLL) {
           await settingsWin.webContents.executeJavaScript(
             `window.scrollTo(0, ${process.env.CLAUDE_PET_SHOT_SCROLL === 'end' ? 'document.body.scrollHeight' : Number(process.env.CLAUDE_PET_SHOT_SCROLL) || 0})`);
