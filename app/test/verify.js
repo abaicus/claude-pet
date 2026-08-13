@@ -467,7 +467,7 @@ const saBlock = html.slice(html.indexOf(SA_START), html.indexOf(SA_END));
 assert.ok(saBlock.includes("usageFromLine"), "could not lift the session-awareness block from index.html");
 const sa = new Function(
   "path",
-  saBlock + "\nreturn { SESSIONS, trackSession, activeSessions, usageFromLine, fmtTokens, shortModel, proj };"
+  saBlock + "\nreturn { SESSIONS, trackSession, activeSessions, usageFromLine, fmtTokens, shortModel, proj, busyCtx, CTX_WINDOW };"
 )(path);
 
 test("parses token usage out of a real transcript line", () => {
@@ -495,6 +495,15 @@ test("ignores non-assistant lines, junk, and a line torn mid-append", () => {
   assert.strictEqual(sa.usageFromLine(""), null);
 });
 
+test("ignores sidechain (subagent) lines — their context is not YOUR context", () => {
+  const line = JSON.stringify({
+    type: "assistant", isSidechain: true, timestamp: "2026-08-13T09:36:25.232Z",
+    message: { id: "msg_02", role: "assistant", model: "claude-fable-5",
+      usage: { input_tokens: 5, cache_read_input_tokens: 900, cache_creation_input_tokens: 0, output_tokens: 50 } },
+  });
+  assert.strictEqual(sa.usageFromLine(line), null, "a subagent's tiny context would zigzag the readout");
+});
+
 test("tracks sessions across start / end / resume", () => {
   sa.trackSession({ session_id: "s1", cwd: "/tmp/projA", hook_event_name: "SessionStart", transcript_path: "/tmp/t.jsonl" });
   sa.trackSession({ session_id: "s2", cwd: "/tmp/projB", hook_event_name: "PostToolUse" });
@@ -505,6 +514,19 @@ test("tracks sessions across start / end / resume", () => {
   assert.strictEqual(sa.activeSessions().length, 2, "resumed session not revived");
   assert.strictEqual(sa.proj(sa.SESSIONS.get("s1")), "projA");
   assert.strictEqual(sa.SESSIONS.get("s1").transcript, "/tmp/t.jsonl");
+});
+
+test("busyCtx reports the busiest live session for the stats line", () => {
+  sa.SESSIONS.clear(); // this suite shares the map with the tracking test above
+  sa.trackSession({ session_id: "b1", cwd: "/tmp/big", hook_event_name: "SessionStart" });
+  sa.trackSession({ session_id: "b2", cwd: "/tmp/small", hook_event_name: "SessionStart" });
+  sa.SESSIONS.get("b1").ctx = sa.CTX_WINDOW / 2;
+  sa.SESSIONS.get("b2").ctx = sa.CTX_WINDOW / 10;
+  const b = sa.busyCtx();
+  assert.strictEqual(b.pct, 50);
+  assert.strictEqual(b.proj, "big");
+  sa.trackSession({ session_id: "b1", hook_event_name: "SessionEnd" });
+  assert.strictEqual(sa.busyCtx().proj, "small", "an ended session is still hogging the stats line");
 });
 
 test("formats tokens and model names the way a pixel bubble wants them", () => {
@@ -540,8 +562,9 @@ test("accessories: unique ids, 'none' is free, every lock is reachable", () => {
 });
 
 test("the whole cast is present and every character hatches and levels up", () => {
-  for (const want of ["blob", "goose", "cat", "gerbil", "dog"])
+  for (const want of ["blob", "cat", "gerbil", "dog", "ghost", "frog", "penguin"])
     assert.ok(cust.CHARACTERS[want], "missing character: " + want);
+  assert.ok(!cust.CHARACTERS.goose, "the goose is back — it looked bad, it stays gone");
   assert.ok(cust.CHARACTERS[cust.CUSTOM_DEFAULTS.character], "default character does not exist");
   for (const [id, ch] of Object.entries(cust.CHARACTERS)) {
     for (const stage of ["hatchling", "junior", "senior"])

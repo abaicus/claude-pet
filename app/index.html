@@ -345,80 +345,6 @@ const CHARACTERS = {
       },
     },
   },
-  goose: {
-    label: "goose",
-    mouthColor: "#f9a825", // the mouth IS the beak
-    bill: true, // and it's wide and flat, like a proper goose
-    feetColor: "#f9a825",
-    stages: {
-      hatchling: {
-        grid: [
-          "................",
-          "................",
-          "................",
-          "................",
-          "................",
-          ".......D........",
-          "......DDDD......",
-          ".....DBBBBD.....",
-          "....DBBBBBBD....",
-          "...DBBBBBBBBD...",
-          "...DBBBBBBBBD...",
-          "...DBBBBBBBBD...",
-          "....DBBBBBBD....",
-          ".....DDDDDD.....",
-          "................",
-          "................",
-        ],
-        top: 6, cx: 7, eyeXL: 6, eyeXR: 9, eyeY: 9, eyeH: 1, mouthY: 11,
-        blushXL: 4, blushXR: 11, blushY: 10, scarfXL: 4, scarfXR: 11, scarfY: 11, feetXL: 6, feetXR: 9,
-      },
-      junior: {
-        grid: [
-          "................",
-          "....DDDDDD......",
-          "...DBBBBBBD.....",
-          "...DBBBBBBD.....",
-          "...DBBBBBBD.....",
-          "....DBBBBD......",
-          ".....DBBD.......",
-          ".....DBBD.......",
-          "..DDDBBBBDDD....",
-          ".DBBBBBBBBBBD...",
-          ".DBBBBBBBBBBD...",
-          ".DBBBBBBBBBBD...",
-          "..DBBBBBBBBD....",
-          "...DDDDDDDD.....",
-          "................",
-          "................",
-        ],
-        top: 1, cx: 6, eyeXL: 5, eyeXR: 8, eyeY: 2, eyeH: 2, mouthY: 4,
-        blushXL: 4, blushXR: 9, blushY: 4, scarfXL: 5, scarfXR: 8, scarfY: 6, feetXL: 5, feetXR: 8,
-      },
-      senior: {
-        grid: [
-          "....DDDDDD......",
-          "...DBBBBBBD.....",
-          "...DBBBBBBD.....",
-          "...DBBBBBBD.....",
-          "....DBBBBD......",
-          ".....DBBD.......",
-          ".....DBBD.......",
-          ".....DBBD.......",
-          ".DDDDBBBBDDDD...",
-          "DBBBBBBBBBBBBD..",
-          "DBBBBBBBBBBBBD..",
-          "DBBBBBBBBBBBBD..",
-          ".DBBBBBBBBBBD...",
-          "..DDDDDDDDDD....",
-          "................",
-          "................",
-        ],
-        top: 0, cx: 6, eyeXL: 5, eyeXR: 8, eyeY: 1, eyeH: 2, mouthY: 3,
-        blushXL: 4, blushXR: 9, blushY: 3, scarfXL: 5, scarfXR: 8, scarfY: 6, feetXL: 5, feetXR: 8,
-      },
-    },
-  },
   cat: {
     label: "cat",
     colors: { W: "#fffef2" },
@@ -635,7 +561,228 @@ const CHARACTERS = {
       },
     },
   },
+  // The goose is gone — a long neck needs more pixels than 16 give it ("looks
+  // bad" — user). These three are the shapes 16×16 was made for.
+  ghost: {
+    label: "ghost",
+    stages: {
+      hatchling: {
+        grid: [
+          "................",
+          "................",
+          "................",
+          "................",
+          "................",
+          "................",
+          "......DDDD......",
+          ".....DBBBBD.....",
+          "....DBBBBBBD....",
+          "...DBBBBBBBBD...",
+          "...DBBBBBBBBD...",
+          "...DBBBBBBBBD...",
+          "....DBDBBDBD....",
+          ".....D.DD.D.....",
+          "................",
+          "................",
+        ],
+        top: 6, cx: 7, eyeXL: 6, eyeXR: 9, eyeY: 9, eyeH: 1, mouthY: 11,
+        blushXL: 4, blushXR: 11, blushY: 10, scarfXL: 4, scarfXR: 11, scarfY: 11, feetXL: 6, feetXR: 9,
+      },
+      junior: {
+        grid: [
+          "................",
+          "................",
+          "....DDDDDDDD....",
+          "...DBBBBBBBBD...",
+          "..DBBBBBBBBBBD..",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          "..DBBDBBBBDBBD..",
+          "...DD..DD..DD...",
+          "................",
+          "................",
+        ],
+        top: 2, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 6, eyeH: 2, mouthY: 10,
+        blushXL: 3, blushXR: 12, blushY: 9, scarfXL: 3, scarfXR: 12, scarfY: 10, feetXL: 5, feetXR: 10,
+      },
+      senior: {
+        grid: [
+          "................",
+          "....DDDDDDDD....",
+          "...DBBBBBBBBD...",
+          "..DBBBBBBBBBBD..",
+          ".DBBBBBBBBBBBBD.",
+          "DBBBBBBBBBBBBBBD",
+          "DBBBBBBBBBBBBBBD",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          "..DBBDBBBBDBBD..",
+          "...DD..DD..DD...",
+          "................",
+          "................",
+        ],
+        top: 1, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 5, eyeH: 2, mouthY: 9,
+        blushXL: 3, blushXR: 12, blushY: 8, scarfXL: 3, scarfXR: 12, scarfY: 10, feetXL: 5, feetXR: 10,
+      },
+    },
+  },
+  frog: {
+    label: "frog",
+    stages: {
+      hatchling: {
+        grid: [
+          "................",
+          "................",
+          "................",
+          "................",
+          "................",
+          ".....DD..DD.....",
+          "......DDDD......",
+          ".....DBBBBD.....",
+          "....DBBBBBBD....",
+          "...DBBBBBBBBD...",
+          "...DBBBBBBBBD...",
+          "...DBBBBBBBBD...",
+          "....DBBBBBBD....",
+          ".....DDDDDD.....",
+          "................",
+          "................",
+        ],
+        top: 6, cx: 7, eyeXL: 6, eyeXR: 9, eyeY: 9, eyeH: 1, mouthY: 11,
+        blushXL: 4, blushXR: 11, blushY: 10, scarfXL: 4, scarfXR: 11, scarfY: 11, feetXL: 6, feetXR: 9,
+      },
+      junior: {
+        grid: [
+          "................",
+          "................",
+          "..DDD......DDD..",
+          ".DBBBD....DBBBD.",
+          ".DBBBDDDDDDBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          "..DBBBBBBBBBBD..",
+          "...DBBBBBBBBD...",
+          "....DDDDDDDD....",
+          "................",
+          "................",
+        ],
+        top: 4, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 6, eyeH: 2, mouthY: 9,
+        blushXL: 3, blushXR: 12, blushY: 8, scarfXL: 3, scarfXR: 12, scarfY: 10, feetXL: 5, feetXR: 10,
+      },
+      senior: {
+        grid: [
+          "................",
+          "..DDD......DDD..",
+          ".DBBBD....DBBBD.",
+          ".DBBBDDDDDDBBBD.",
+          "DBBBBBBBBBBBBBBD",
+          "DBBBBBBBBBBBBBBD",
+          "DBBBBBBBBBBBBBBD",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBWWWWWWWWBBD.",
+          ".DBBWWWWWWWWBBD.",
+          ".DBBBBBBBBBBBBD.",
+          "..DBBBBBBBBBBD..",
+          "...DBBBBBBBBD...",
+          "....DDDDDDDD....",
+          "................",
+          "................",
+        ],
+        top: 3, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 5, eyeH: 2, mouthY: 8,
+        blushXL: 2, blushXR: 13, blushY: 6, scarfXL: 3, scarfXR: 12, scarfY: 10, feetXL: 5, feetXR: 10,
+      },
+    },
+  },
+  penguin: {
+    label: "penguin",
+    colors: { W: "#fffef2" },
+    mouthColor: "#f9a825",
+    feetColor: "#f9a825",
+    stages: {
+      hatchling: {
+        grid: [
+          "................",
+          "................",
+          "................",
+          "................",
+          "................",
+          "................",
+          "......DDDD......",
+          ".....DBBBBD.....",
+          "....DBBBBBBD....",
+          "...DBBBBBBBBD...",
+          "...DBWWWWWWBD...",
+          "...DBWWWWWWBD...",
+          "....DBWWWWBD....",
+          ".....DDDDDD.....",
+          "................",
+          "................",
+        ],
+        top: 6, cx: 7, eyeXL: 6, eyeXR: 9, eyeY: 9, eyeH: 1, mouthY: 11,
+        blushXL: 4, blushXR: 11, blushY: 10, scarfXL: 4, scarfXR: 11, scarfY: 11, feetXL: 6, feetXR: 9,
+      },
+      junior: {
+        grid: [
+          "................",
+          "................",
+          "....DDDDDDDD....",
+          "...DBBBBBBBBD...",
+          "..DBBBBBBBBBBD..",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBWWWWWWWWBBD.",
+          ".DBBWWWWWWWWBBD.",
+          ".DBBWWWWWWWWBBD.",
+          ".DBBWWWWWWWWBBD.",
+          "..DBWWWWWWWWBD..",
+          "...DBBBBBBBBD...",
+          "....DDDDDDDD....",
+          "................",
+          "................",
+        ],
+        top: 2, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 5, eyeH: 2, mouthY: 7,
+        blushXL: 3, blushXR: 12, blushY: 8, scarfXL: 3, scarfXR: 12, scarfY: 11, feetXL: 5, feetXR: 10,
+      },
+      senior: {
+        grid: [
+          "................",
+          "....DDDDDDDD....",
+          "...DBBBBBBBBD...",
+          "..DBBBBBBBBBBD..",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          "DBDBWWWWWWWWBDBD",
+          "DBDBWWWWWWWWBDBD",
+          "DBDBWWWWWWWWBDBD",
+          "DDDBWWWWWWWWBDDD",
+          ".DBBWWWWWWWWBBD.",
+          ".DBBWWWWWWWWBBD.",
+          "..DBBBBBBBBBBD..",
+          "....DDDDDDDD....",
+          "................",
+          "................",
+        ],
+        top: 1, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 4, eyeH: 2, mouthY: 6,
+        blushXL: 3, blushXR: 12, blushY: 5, scarfXL: 3, scarfXR: 12, scarfY: 11, feetXL: 5, feetXR: 10,
+      },
+    },
+  },
 };
+
+// A saved character that no longer exists (rip goose) falls back to the blob.
+if (!CHARACTERS[S.custom.character]) S.custom.character = CUSTOM_DEFAULTS.character;
 
 const IDLE_MS = 60e3; // "you've actually stopped working" threshold
 const save = () => { try { fs.writeFileSync(STATE, JSON.stringify(S)); } catch (e) {} };
@@ -982,6 +1129,13 @@ const activeSessions = () =>
 
 const proj = (s) => path.basename(s.cwd || "") || "somewhere";
 
+// The busiest live session's context, or null — feeds the stats line and the
+// periodic report, so both always tell the same story.
+function busyCtx() {
+  const b = activeSessions().filter((s) => s.ctx).sort((x, y) => y.ctx - x.ctx)[0];
+  return b ? { pct: Math.min(999, Math.round((b.ctx / CTX_WINDOW) * 100)), proj: proj(b) } : null;
+}
+
 // One API response spans several transcript lines, each repeating the same
 // usage block — the caller must count each message id once or burn triples.
 function usageFromLine(line) {
@@ -990,6 +1144,10 @@ function usageFromLine(line) {
     const o = JSON.parse(line);
     const m = o.message;
     if (o.type !== "assistant" || !m || !m.usage) return null;
+    // Subagent (sidechain) lines live in the same transcript with their own,
+    // much smaller usage — counting them made the context readout bounce
+    // between the session's real number and whatever a helper was doing.
+    if (o.isSidechain) return null;
     const u = m.usage;
     return {
       id: m.id || o.requestId || "",
@@ -1098,6 +1256,18 @@ setInterval(() => {
     beep(SOUNDS.gossip);
   }
 }, 150e3);
+
+// The reliable usage report, on a clock instead of a dice roll. The /usage
+// plan limits live behind an authenticated API call inside Claude Code — not
+// on disk — so the pet reports the two things it can honestly measure from
+// transcripts: context fullness and the rolling 5h output burn.
+setInterval(() => {
+  if (Date.now() - S.lastEvent > 20 * 60e3) return;
+  const b = busyCtx();
+  if (!b || b.pct < 40) return; // nothing worth interrupting for yet
+  const burned = BURN.reduce((n, x) => n + x.tokens, 0);
+  say(`🧠 ~${b.pct}% ctx in ${b.proj}${burned > 1000 ? ` · ~${fmtTokens(burned)} out/5h` : ""}`);
+}, 10 * 60e3);
 
 /* ---------- tailing + rotation ---------- */
 const LOG_CAP = 512 * 1024; // and again whenever it gets chunky mid-session
@@ -1321,8 +1491,12 @@ function render() {
   // zzz
   if (a === "sleep" && frame % 4 < 2) { px(13, 3, "#fffef2"); px(14, 2, "#fffef2"); }
 
+  // Context lives IN the stats line now — permanently visible, not a dice
+  // roll. The ~ is honest: /200k assumed, measured from the transcript.
+  const b = busyCtx();
   statsEl.textContent =
-    `${S.custom.name ? S.custom.name + " " : ""}lv.${level()}  🍖${Math.round(100 - S.hunger)}  ⚡${Math.round(S.energy)}`;
+    `${S.custom.name ? S.custom.name + " " : ""}lv.${level()}  🍖${Math.round(100 - S.hunger)}  ⚡${Math.round(S.energy)}` +
+    (b ? `  🧠${b.pct}%` : "");
 }
 setInterval(render, 250); // chunky 4fps, like the real thing
 render();

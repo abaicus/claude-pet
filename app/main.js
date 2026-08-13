@@ -536,7 +536,7 @@ function openSettings() {
     return;
   }
   const W = 292;
-  const H = 528; // just the card + its shadow — a frameless window's transparent slack still eats clicks
+  const H = 566; // just the card + its shadow — a frameless window's transparent slack still eats clicks
   const [px, py] = win.getPosition();
   const [pw] = win.getSize();
   const pos = clampToDisplay(px + Math.round(pw / 2 - W / 2), py - 40, W, H);

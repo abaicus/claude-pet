@@ -56,8 +56,8 @@ running Claude Code has Node already.
   quit* (surgically removes only claude-pet's entries from settings.json), or
   quit keeping hooks.
 - **Settings…** opens a little retro panel with everything else: name your
-  pet, pick its species — blob, goose, cat, gerbil, or dog, all hatching from
-  the same egg and evolving through the same stages — pick one of six color
+  pet, pick its species — blob, cat, gerbil, dog, ghost, frog, or penguin, all
+  hatching from the same egg and evolving through the same stages — pick one of six color
   palettes, dress it (accessories unlock as it levels), size slider (70–200%,
   resizes live from the pet's feet) with a reset-size-&-position button,
   toggles for the speech bubble / stats line / glow, and sounds (every action
@@ -102,9 +102,12 @@ deliberately low odds — the pet comments on your work, it doesn't narrate it.
 
 The hook hands over the session's transcript path, and the app (never the
 hook) reads the tail of it to learn things it can honestly report: how many
-sessions are running and in which projects, how full the context window is,
+sessions are running and in which projects, how full the context window is
+(always on show as 🧠% in the stats line, subagent noise filtered out),
 which model is on the case, and roughly how many tokens you've burned in the
-last 5 hours. Pet it and it'll tell you — "3 sessions: api, web, infra",
+last 5 hours. Every 10 minutes it repeats the headline numbers once context
+passes 40% — plan limits (/usage) aren't on disk, so it reports only what
+the transcript proves. Pet it and it'll tell you — "3 sessions: api, web, infra",
 "context ~62% in claude-pet", "~1.2M tokens out in 5h". The context-fullness
 warnings fire once per threshold and re-arm after a /compact.
 

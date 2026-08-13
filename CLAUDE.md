@@ -46,7 +46,7 @@ Electron app — transparent, frameless, always-on-top, draggable
 
 ## What's verified
 
-`npm test` — 50 checks, all green:
+`npm test` — 52 checks, all green:
 
 - Installer: idempotent double-install, preserves user hooks/groups/matchers
   and unrelated settings keys, backs up, refuses invalid JSON leaving the file
@@ -120,11 +120,18 @@ Verified by actually running it on macOS (screenshots via `CLAUDE_PET_SHOT`):
 - **Session awareness**: the hook adds `transcript_path` (a path, ~100 bytes
   — invariant 1 intact); the APP tails transcripts incrementally (per-file
   offset, starts at last 64KB, dedups by message id since one API response
-  spans several lines with the same usage). Knows: active sessions + project
-  names, context fullness (input + both cache buckets, /200k assumed —
-  labels say "~"), model, rolling 5h output-token burn. One-shot warnings at
-  ~75% and ~90% context ("/compact soon!"), re-armed when it drops below 60%.
+  spans several lines with the same usage, and **skips `isSidechain` lines**
+  — subagent usage in the same transcript made the context readout bounce).
+  Knows: active sessions + project names, context fullness (input + both
+  cache buckets, /200k assumed — labels say "~"), model, rolling 5h
+  output-token burn. Context is ALWAYS visible: 🧠% of the busiest live
+  session in the stats line (`busyCtx()`), plus a periodic report every
+  10min once ctx ≥40% ("🧠 ~62% ctx in proj · ~1.2M out/5h"), plus one-shot
+  warnings at ~75% and ~90% ("/compact soon!"), re-armed below 60%.
   Unprompted gossip every ~2.5min at 35% odds, only while events are recent.
+  **/usage plan limits are NOT readable**: that data lives behind an
+  authenticated API call inside Claude Code, not on disk. Don't fake it —
+  the pet only reports what the transcript proves.
 - PostToolUse Edit/Write → eat animation, hunger −8, xp
 - Bash containing "git commit" → party, hunger −20, mood +15, xp +25
 - Green test run → party, xp +20, mood +15, "27 tests green ✓"
@@ -144,13 +151,21 @@ Verified by actually running it on macOS (screenshots via `CLAUDE_PET_SHOT`):
   minute (+0.3 otherwise). **Sleep needs low energy AND a minute of quiet** —
   gating on energy alone made the pet doze through every busy session, which
   is precisely when it should be lively.
-- **Characters** (`S.custom.character`): blob, goose, cat, gerbil, dog. All
-  hatch from the SAME egg and evolve through the same xp ladder; each
-  character × stage is its own 16×16 grid + face layout in the `CHARACTERS`
-  table (grid letters: `.` empty, `D` outline, `B` body/palette, `W` white
-  patch; char-level extras: `mouthColor`+`bill` make the goose's mouth a wide
-  orange beak, `feetColor` its walking feet). The wizard stage reuses the
-  senior grid — the hat marks it, anchored to each layout's `top`/`cx`.
+- **Characters** (`S.custom.character`): blob, cat, gerbil, dog, ghost, frog,
+  penguin. All hatch from the SAME egg and evolve through the same xp ladder;
+  each character × stage is its own 16×16 grid + face layout in the
+  `CHARACTERS` table (grid letters: `.` empty, `D` outline, `B` body/palette,
+  `W` white patch; char-level extras: `mouthColor` = orange beak, `feetColor`
+  = orange feet, `bill` = wide flat idle mouth). The wizard stage reuses the
+  senior grid — the hat marks it, anchored to each layout's `top`/`cx`. A
+  saved character that no longer exists falls back to blob on load.
+  **The goose was tried and removed** ("looks bad" — user): a long neck needs
+  more pixels than 16 give it. Stick to shapes that read at 16×16 — round
+  bodies, ears, bellies, wavy hems. Two hard-won face rules: eyes must not
+  hang off a dark crown-bridge row (they merge with it and vanish — give
+  them a body-color row above), and eyes inside small silhouette bumps just
+  fill the bump with dark (the frog's eyes live on its face, bumps stay
+  empty).
 - Evolution by xp: egg(0) → hatchling(50) → junior(250) → senior(1000) →
   wizard(3000). Each stage LOOKS different, not recolored — bigger body,
   longer ears, taller neck. Stage markers stay OFF the face and IN the
@@ -229,8 +244,8 @@ Verified by actually running it on macOS (screenshots via `CLAUDE_PET_SHOT`):
 
 Done: 1–4, plus (unnumbered): interactivity (petting/treats/eyes/wander),
 customization + settings window, session awareness/context warnings, visual
-evolution ladder, glow, bubble reposition, characters (goose/cat/gerbil/dog),
-sounds for all actions, Notification/PreCompact/SubagentStop reactions.
+evolution ladder, glow, bubble reposition, characters (cat/gerbil/dog/ghost/frog/penguin),
+sounds for all actions, always-visible context readout (sidechain-free), Notification/PreCompact/SubagentStop reactions.
 
 1. ~~Run it, fix anything platform-specific~~ — see "Platform notes" below
 2. ~~Test-run awareness~~ — `isTestCmd`/`parseTests` in index.html
