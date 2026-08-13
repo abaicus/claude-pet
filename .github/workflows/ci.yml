@@ -85,10 +85,11 @@ jobs:
       # art.js can break the icon generator — which nothing else would notice
       # until a release shipped with a stale one.
       #
-      # A crash or an unreadable icon fails. A byte difference only warns: two
-      # machines rasterizing the same gradient are not guaranteed to agree to
-      # the pixel, and a false red build teaches people to ignore red builds.
-      - name: The icon generator still runs, and still agrees
+      # The render is reproducible: this runner draws the committed icon byte
+      # for byte. So a difference means the committed file is stale, and the
+      # fix is the one line the error prints. (If an Electron bump ever moves
+      # the bytes, that same line is still the right answer.)
+      - name: The committed icon is the icon the code draws
         run: |
           set -euo pipefail
           before=$(shasum -a 256 build/icon.png | cut -d' ' -f1)
@@ -97,7 +98,8 @@ jobs:
           test "$(sips -g pixelWidth build/icon.png | awk '/pixelWidth/{print $2}')" = "1024"
           after=$(shasum -a 256 build/icon.png | cut -d' ' -f1)
           if [ "$before" != "$after" ]; then
-            echo "::warning::build/icon.png differs from what scripts/make-icon.js just drew — if art.js changed, run 'npm run icon' and commit the result"
+            echo "::error::build/icon.png is stale — run 'npm run icon' and commit the result"
+            exit 1
           fi
 
   cask:
