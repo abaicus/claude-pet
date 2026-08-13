@@ -10,7 +10,7 @@ const C = require('../shared/constants');
 const { TUNING } = C;
 const { loadJson, saveJson, Saver } = require('./persistence');
 const { defaultState, resetState, migrate, defaultPrefs, migratePrefs } = require('./state');
-const { reduce, tick, checkTokenMilestone } = require('./reducer');
+const { reduce, tick, checkTokenMilestone, ensureWords } = require('./reducer');
 const { LogTailer } = require('./tailer');
 const { SessionRegistry } = require('./sessions');
 const { pick } = require('./quips');
@@ -135,9 +135,10 @@ class Brain extends EventEmitter {
       // replay) still move stats but fire no fx.
       const live = this.replayDone && !meta.replay && (now - (ev.ts || 0)) < LIVE_EVENT_MAX_AGE_MS;
       const ctx = { now, rng: this.rng, live };
-      this.applyFx(this.sessions.noteEvent(ev, ctx));
-      const fx = reduce(this.state, ev, ctx);
-      this.applyFx(fx);
+      // One event, one voice: the registry's line and the reducer's are judged
+      // together so ensureWords only fills a silence that is really there.
+      const fx = this.sessions.noteEvent(ev, ctx).concat(reduce(this.state, ev, ctx));
+      this.applyFx(ensureWords(fx, ctx));
       this.log.push(ev);
     }
     if (this.log.length > 400) this.log.splice(0, this.log.length - 400);
@@ -153,7 +154,7 @@ class Brain extends EventEmitter {
   onTick() {
     const now = this.now();
     const ctx = { now, rng: this.rng, live: true };
-    this.applyFx(tick(this.state, now, ctx));
+    this.applyFx(ensureWords(tick(this.state, now, ctx), ctx));
     this.maybeGossip(now);
     if (this.bubble && now > this.bubble.until) this.bubble = null;
     this.stateSaver.markDirty();
@@ -201,6 +202,12 @@ class Brain extends EventEmitter {
     // Don't let a quip stomp an important bubble that is still showing.
     if (!important && this.bubble && this.bubble.important && this.now() < this.bubble.until) return;
     const dur = Math.max(2800, Math.min(9000, 1500 + text.length * 60));
+    // The same words twice in a row are one thought, not two: keep them up
+    // longer instead of re-popping the bubble (a busy turn greps five times).
+    if (this.bubble && this.bubble.text === text && this.now() < this.bubble.until) {
+      this.bubble.until = this.now() + dur;
+      return;
+    }
     this.bubble = { seq: ++this.seq, text, important: !!important, kind: kind || null, until: this.now() + dur };
   }
 
@@ -468,7 +475,7 @@ class Brain extends EventEmitter {
         const preset = presets[cmd.name];
         if (!preset) { result = { ok: false, reason: 'unknown event preset' }; break; }
         const ev = Object.assign({ ts: now, sid: 'debug' }, preset);
-        this.applyFx(reduce(this.state, ev, ctx));
+        this.applyFx(ensureWords(reduce(this.state, ev, ctx), ctx));
         break;
       }
       case 'debugSleep': {

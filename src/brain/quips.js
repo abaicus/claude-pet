@@ -42,6 +42,12 @@ const POOLS = {
   inspect: ['*peeks at git*', '*checks the map*'],
   rmRf: ['😱 careful!!', '*hides*', 'deleting?! be gentle'],
   toolFail: ['oh no', 'ouch…', 'that errored', '*sweats*'],
+  testsRed: ['tests failed…', 'red. ouch', 'something broke…'],
+  spooked: ['*eek*', '*hides behind a tab*', 'that one was scary…'],
+  mcpCall: ['*pokes a server*', 'tool time~', 'asking the neighbours'],
+  subagentBack: ['a minion returns!', 'welcome home, agent~', 'that\'s one helper done'],
+  noted: ['noted!', '*perks up*', 'mm-hm'],
+  milestone: ['a milestone!! ✨', 'that\'s a big one!', 'we did a thing!'],
   whisper: ['*reading…*', '*sniffs the codebase*', '*quiet fetch*', '*hmm*', '*busy little agents*'],
   todoTick: ['one down!', 'tick ✓', 'progress~', 'good good'],
   todosDone: ['ALL DONE!! ✅', 'list cleared!! 🎉', 'every box ticked!!'],
@@ -116,10 +122,36 @@ const EXT_FLAVOR = {
   txt: 'plain text, plain good', lock: 'a lockfile?! so many lines'
 };
 
+// Every noise the pet can make, and what that noise MEANS in words. A chirp
+// with nothing on screen is a mystery — you hear that something happened and
+// have no way to find out what — so when a reaction makes a sound and no case
+// had anything specific to say, the brain says these words instead. Keeping
+// the mapping here (rather than a fallback string at each call site) is what
+// lets one test prove that no motif can ever play in silence.
+const SOUND_QUIP = {
+  commit: 'commit', green: 'testsGreenNoCount', red: 'testsRed',
+  merge: 'merge', push: 'push', branch: 'branch', stash: 'stash',
+  install: 'install', build: 'build', deploy: 'deploy', release: 'release',
+  clone: 'clone', undo: 'revert', tidy: 'lint', types: 'typecheck',
+  whale: 'docker', migrate: 'migrate',
+  eat: 'edit', feast: 'feast', prompt: 'prompt',
+  growl: 'promptStarving', chonk: 'promptChonk',
+  pet: 'petted', treat: 'treat', nope: 'treatFull',
+  sad: 'toolFail', lonely: 'lonely', wake: 'wake', sleep: 'sleepy', bye: 'sessionEnd',
+  spook: 'spooked', zap: 'sudo', warn: 'spooked',
+  peek: 'whisper', sniff: 'search', diff: 'diff', web: 'net', mcp: 'mcpCall',
+  done: 'stop', minion: 'subagentBack', dispatch: 'dispatch',
+  todo: 'todoTick', checklist: 'todosDone', compact: 'preCompact',
+  gossip: 'aiJoke', ding: 'noted',
+  levelup: 'levelUp', transform: 'evolve', hatch: 'evolve',
+  milestone: 'milestone', combo: 'combo', equip: 'accessory', reset: 'reset',
+  notify: 'waiting', hint: 'waiting'
+};
+
 function pick(rng, pool) {
   const arr = POOLS[pool];
   if (!arr || !arr.length) return null;
   return arr[Math.floor(rng() * arr.length)];
 }
 
-module.exports = { POOLS, EXT_FLAVOR, pick };
+module.exports = { POOLS, EXT_FLAVOR, SOUND_QUIP, pick };

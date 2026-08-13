@@ -8,7 +8,7 @@
 
 const { TUNING, levelForXp, formForLevel, MAX_LEVEL } = require('../shared/constants');
 const { classifyBash } = require('./bash-parser');
-const { pick, EXT_FLAVOR } = require('./quips');
+const { pick, EXT_FLAVOR, SOUND_QUIP } = require('./quips');
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const QUIET_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'TodoRead', 'Task', 'NotebookRead']);
@@ -78,6 +78,22 @@ function sound(fx, ctx, name) {
   fx.push({ type: 'sound', name });
 }
 
+// The pet is never allowed to make a noise it can't explain. Cases say what
+// they have to say at their own odds; whatever is left over gets the words
+// that go with the sound it just made. Applied once per event, over the WHOLE
+// batch — the session registry speaks first for some events, and a generic
+// line must never elbow a specific one out of the way.
+function ensureWords(fx, ctx) {
+  if (!ctx || !ctx.live || !fx || !fx.length) return fx;
+  if (fx.some(f => f.type === 'bubble')) return fx;
+  const chirp = fx.find(f => f.type === 'sound');
+  if (!chirp) return fx;
+  const pool = SOUND_QUIP[chirp.name];
+  const text = pick(ctx.rng, pool);
+  if (text) fx.push({ type: 'bubble', text, kind: pool });
+  return fx;
+}
+
 function wakeIfSleeping(state, fx, ctx) {
   if (!state.sleeping) return;
   state.sleeping = false;
@@ -117,10 +133,11 @@ function reduceBash(state, ev, fx, ctx) {
       sound(fx, ctx, 'sad');
       say(fx, ctx, 0.6, 'toolFail');
     } else if (ev.desc) {
-      // Claude labels every command it runs; the pet reads the label aloud
-      // now and then instead of inventing a description of its own.
+      // Claude labels every command it runs, and its label beats anything the
+      // pet could invent — so an unclassified command is read aloud verbatim
+      // rather than answered with a generic noise.
       sound(fx, ctx, 'peek');
-      say(fx, ctx, 0.06, null, { text: `*${ev.desc.toLowerCase()}*`, kind: 'narrate' });
+      say(fx, ctx, 1, null, { text: `*${ev.desc.toLowerCase()}*`, kind: 'narrate' });
     }
     return;
   }
@@ -189,7 +206,7 @@ function reduceBash(state, ev, fx, ctx) {
     }
     case 'tests-unknown': {
       sound(fx, ctx, 'peek');
-      say(fx, ctx, 0.3, 'testsUnknown');
+      say(fx, ctx, 1, 'testsUnknown');   // the generic peek words would be a lie here
       break;
     }
     case 'pr-create': {
@@ -240,9 +257,9 @@ function reduceBash(state, ev, fx, ctx) {
       }
       break;
     }
-    case 'inspect': {           // git status/log — constant, so almost silent
+    case 'inspect': {           // git status/log — constant, so the words stay small
       sound(fx, ctx, 'peek');
-      say(fx, ctx, 0.08, 'inspect');
+      say(fx, ctx, 1, 'inspect');
       break;
     }
     case 'lint': {
@@ -350,8 +367,11 @@ function reduceEdit(state, ev, fx, ctx) {
     anim(fx, ctx, touched > 0 && touched <= 2 ? 'nibble' : 'eat');
     sound(fx, ctx, 'eat'); // throttled hard renderer-side: a busy session is not a metronome
     const flavor = ev.ext && EXT_FLAVOR[ev.ext];
-    if (flavor) say(fx, ctx, 0.1, null, { text: flavor, kind: 'flavor' });
-    else say(fx, ctx, 0.08, touched > 0 && touched <= 2 ? 'tinyEdit' : 'edit');
+    // What the file TASTES like is more interesting than "nice edit", so it
+    // gets first refusal; the plain pools (and the sound's own words) cover
+    // the rest.
+    if (flavor) say(fx, ctx, 0.6, null, { text: flavor, kind: 'flavor' });
+    else say(fx, ctx, 0.5, touched > 0 && touched <= 2 ? 'tinyEdit' : 'edit');
   }
   addXp(state, TUNING.xpPerEdit, fx, ctx);
 }
@@ -390,37 +410,37 @@ function reduceTodos(state, ev, fx, ctx) {
 // from the payload (which host, which MCP server, which subagent) rather than
 // a generic noise.
 function reduceQuietTool(state, ev, tool, fx, ctx) {
+  // Whenever the payload names the thing — the server, the host, the file —
+  // that name is said, every time: it is the one part of the noise a human
+  // cannot guess. The vague pools are only for when there is no name.
   if (tool.startsWith('mcp__') || tool.startsWith('ListMcpResources')) {
     sound(fx, ctx, 'mcp');
-    if (ev.srv) say(fx, ctx, 0.12, null, { text: `*pokes the ${ev.srv} server*`, kind: 'mcp' });
-    else say(fx, ctx, 0.04, 'whisper');
+    if (ev.srv) say(fx, ctx, 1, null, { text: `*pokes the ${ev.srv} server*`, kind: 'mcp' });
     return;
   }
   switch (tool) {
     case 'WebFetch':
       sound(fx, ctx, 'web');
-      if (ev.host) say(fx, ctx, 0.25, null, { text: `*reads ${ev.host}*`, kind: 'web' });
-      else say(fx, ctx, 0.08, 'whisper');
+      if (ev.host) say(fx, ctx, 1, null, { text: `*reads ${ev.host}*`, kind: 'web' });
       return;
     case 'WebSearch':
       sound(fx, ctx, 'web');
-      say(fx, ctx, 0.12, 'net');
+      say(fx, ctx, 0.5, 'net');
       return;
     case 'Task':                          // the subagent came home
       sound(fx, ctx, 'minion');
-      if (ev.agent) say(fx, ctx, 0.35, null, { text: `the ${ev.agent} is back!`, kind: 'minion' });
-      else say(fx, ctx, 0.15, 'whisper');
+      if (ev.agent) say(fx, ctx, 1, null, { text: `the ${ev.agent} is back!`, kind: 'minion' });
       return;
     case 'Grep': case 'Glob':
       sound(fx, ctx, 'sniff');
       if (ctx.live && ctx.rng() < 0.15) anim(fx, ctx, 'sniff'); // frequent: rarely moves
-      say(fx, ctx, 0.05, 'search');
+      say(fx, ctx, 0.5, 'search');
       return;
     default: {
       sound(fx, ctx, 'peek');
       const flavor = ev.ext && EXT_FLAVOR[ev.ext];
-      if (flavor) say(fx, ctx, 0.05, null, { text: flavor, kind: 'flavor' });
-      else say(fx, ctx, 0.04, 'whisper');
+      if (ev.file) say(fx, ctx, 1, null, { text: `*reads ${ev.file}*`, kind: 'read' });
+      else if (flavor) say(fx, ctx, 0.5, null, { text: flavor, kind: 'flavor' });
     }
   }
 }
@@ -464,7 +484,8 @@ function reduce(state, ev, ctx) {
         sound(fx, ctx, 'dispatch');
         // no article — subagent types are proper-ish names ("Explore",
         // "general-purpose") and "a Explore" reads terribly.
-        say(fx, ctx, 0.6, 'dispatch', ev.agent ? { text: `*${ev.agent}, go!*`, kind: 'dispatch' } : {});
+        say(fx, ctx, ev.agent ? 1 : 0.6, 'dispatch',
+          ev.agent ? { text: `*${ev.agent}, go!*`, kind: 'dispatch' } : {});
       }
       break;
     }
@@ -631,4 +652,4 @@ function checkTokenMilestone(state, ctx) {
   return fx;
 }
 
-module.exports = { reduce, tick, checkTokenMilestone, EDIT_TOOLS, isQuietTool };
+module.exports = { reduce, tick, checkTokenMilestone, ensureWords, EDIT_TOOLS, isQuietTool };

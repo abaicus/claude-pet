@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { reduce, tick, checkTokenMilestone } = require('../src/brain/reducer');
+const { reduce, tick, checkTokenMilestone, ensureWords } = require('../src/brain/reducer');
 const { defaultState } = require('../src/brain/state');
 const { TUNING, XP_LADDER } = require('../src/shared/constants');
 const { POOLS } = require('../src/brain/quips');
@@ -369,4 +369,68 @@ test('a prompt sometimes gets cheered on its way out the door', () => {
   assert.equal(bubble.kind, 'cheer');
   assert.ok(POOLS.cheer.includes(bubble.text), bubble.text);
   assert.ok(POOLS.cheer.includes('make no mistakes!'), 'the one quip that was asked for by name');
+});
+
+// ---------------------------------------------------------------- a chirp always has words
+// The complaint this answers: the pet makes a noise, you look up, and there is
+// nothing on screen telling you what it just noticed. Every rng below is 0.99,
+// so every one of the reducer's own coin-flipped quips loses — which is
+// exactly the case that used to leave a sound alone with no words.
+const NOISY = [
+  ev('UserPromptSubmit', { plen: 200 }),
+  ev('PostToolUse', { tool: 'Edit', file: 'a.js', ext: 'js', add: 3, del: 1 }),
+  ev('PostToolUse', { tool: 'Read', file: 'main.js', ext: 'js' }),
+  ev('PostToolUse', { tool: 'Grep' }),
+  ev('PostToolUse', { tool: 'Task', agent: 'Explore' }),
+  ev('PostToolUse', { tool: 'mcp__thing__do', srv: 'thing' }),
+  ev('PostToolUse', { tool: 'WebFetch', host: 'example.com' }),
+  ev('PostToolUse', { tool: 'Bash', cmd: 'ls -la', desc: 'List the files' }),
+  ev('PostToolUse', { tool: 'Bash', cmd: 'git status' }),
+  ev('PostToolUse', { tool: 'Bash', cmd: 'git commit -m x' }),
+  ev('PostToolUse', { tool: 'Bash', cmd: 'npm test', out: '2 passing' }),
+  ev('PostToolUse', { tool: 'Bash', cmd: 'rg TODO src/' }),
+  ev('PostToolUse', { tool: 'TodoWrite', todo: { n: 3, d: 1, p: 1 } }),
+  ev('Stop'), ev('SubagentStop'), ev('SessionStart'), ev('SessionEnd'), ev('PreCompact')
+];
+
+test('every sound the pet makes comes with something to read', () => {
+  for (const e of NOISY) {
+    const s = fresh();
+    s.food = 60;
+    const c = ctx();
+    const fx = ensureWords(reduce(s, e, c), c);
+    if (!fx.some(f => f.type === 'sound')) continue;
+    const bubble = fx.find(f => f.type === 'bubble' && f.text);
+    assert.ok(bubble, `${e.t} ${e.tool || e.cmd || ''} chirps with nothing to show for it`);
+  }
+});
+
+test('what the payload names, the pet says by name', () => {
+  // The generic fallback must never be what you get when the event carried a
+  // filename, a host or a subagent — that detail is the whole point.
+  const cases = [
+    [ev('PostToolUse', { tool: 'Read', file: 'main.js' }), /main\.js/],
+    [ev('PostToolUse', { tool: 'WebFetch', host: 'example.com' }), /example\.com/],
+    [ev('PostToolUse', { tool: 'Task', agent: 'Explore' }), /Explore/],
+    [ev('PostToolUse', { tool: 'mcp__thing__do', srv: 'thing' }), /thing/],
+    [ev('PreToolUse', { tool: 'Task', agent: 'Explore' }), /Explore/],
+    [ev('PostToolUse', { tool: 'Bash', cmd: 'ls -la', desc: 'List the files' }), /list the files/]
+  ];
+  for (const [e, re] of cases) {
+    const c = ctx();
+    const fx = ensureWords(reduce(fresh(), e, c), c);
+    const bubble = fx.find(f => f.type === 'bubble');
+    assert.ok(bubble && re.test(bubble.text), `${e.tool} said "${bubble && bubble.text}"`);
+  }
+});
+
+test('the fallback fills a silence, it does not talk over anyone', () => {
+  const c = ctx();
+  // the session registry already named the project that finished
+  const spoken = [{ type: 'sound', name: 'done' }, { type: 'bubble', text: 'claudy-pet · your turn~ ✓' }];
+  ensureWords(spoken, c);
+  assert.equal(spoken.filter(f => f.type === 'bubble').length, 1, 'two voices for one event');
+  // and it stays quiet on a replayed backlog, like everything else
+  const replayed = [{ type: 'sound', name: 'done' }];
+  assert.deepEqual(ensureWords(replayed, ctx(T0, false)), [{ type: 'sound', name: 'done' }]);
 });

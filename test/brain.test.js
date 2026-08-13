@@ -339,3 +339,38 @@ test('debug event presets all resolve through the real reducer', () => {
     assert.equal(res.ok, true, `preset '${name}' is offered but does not exist`);
   }
 });
+
+test('a turn that ends makes a noise AND says who finished', () => {
+  // rng is 0.99 in this harness: every optional quip loses its coin flip, so
+  // whatever the bubble ends up saying, it is not there by luck.
+  const { brain, dir } = makeBrain();
+  brain.replayDone = true;
+  brain.prefs.bubbles = true;
+  brain.onEvents([{ t: 'Stop', ts: T0, sid: 's1', project: 'claudy-pet', cwd: '/x/claudy-pet' }]);
+  const rs = brain.getRenderState();
+  assert.ok(rs.sounds.some(s => s.name === 'done'), 'no chime');
+  assert.ok(rs.bubble && rs.bubble.text, 'the pet chirped and said nothing');
+  assert.match(rs.bubble.text, /claudy-pet/, 'the one thing you cannot see for yourself');
+  assert.ok(dir);
+});
+
+test('a quiet tool call names what it looked at', () => {
+  const { brain } = makeBrain();
+  brain.replayDone = true;
+  brain.prefs.bubbles = true;
+  brain.onEvents([{ t: 'PostToolUse', ts: T0, sid: 's1', tool: 'Read', file: 'reducer.js', ext: 'js', ok: true }]);
+  const rs = brain.getRenderState();
+  assert.ok(rs.sounds.length > 0);
+  assert.match(rs.bubble.text, /reducer\.js/);
+});
+
+test('the same line twice in a row stays up instead of re-popping', () => {
+  const { brain, setNow } = makeBrain();
+  brain.prefs.bubbles = true;
+  brain.pushBubble({ text: 'searching…' });
+  const first = brain.bubble.seq;
+  setNow(T0 + 500);
+  brain.pushBubble({ text: 'searching…' });
+  assert.equal(brain.bubble.seq, first, 'the renderer would re-animate an identical thought');
+  assert.ok(brain.bubble.until > T0 + 500, 'and it should get longer, not shorter');
+});

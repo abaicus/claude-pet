@@ -143,3 +143,15 @@ test('motifs are short, ordered note sequences (no runaway jingles)', () => {
     }
   }
 });
+
+test('every motif has words to go with it', () => {
+  // A noise the pet can make but cannot explain is the bug this table exists
+  // to prevent; the brain falls back to these words whenever a reaction had
+  // nothing more specific to say.
+  const { SOUND_QUIP, POOLS } = require('../src/brain/quips');
+  for (const name of motifNames()) {
+    const pool = SOUND_QUIP[name];
+    assert.ok(pool, `motif '${name}' can play with nothing on screen to explain it`);
+    assert.ok(POOLS[pool] && POOLS[pool].length, `'${name}' points at '${pool}', which has no words`);
+  }
+});
