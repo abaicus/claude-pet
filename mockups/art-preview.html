@@ -20,7 +20,8 @@
 <body>
 <h1>claude-pet — art direction (code-drawn, real size)</h1>
 <div class="note">
-  Five forms, five silhouettes — egg → hatchling → junior → senior → elder.
+  Seven forms, seven silhouettes — egg → hatchling → junior → senior → elder
+  → principal → legend.
   Ramp color shifts one step per evolution. Face untouched by every accessory.
   Rim-light glow + ground shadow only. Rows render on light and dark wallpaper.
 </div>
@@ -29,7 +30,7 @@
 <div class="wall light" id="forms-light"></div>
 <div class="wall dark" id="forms-dark"></div>
 
-<h2>All 12 accessories (junior + senior forms)</h2>
+<h2>All 27 accessories (junior + senior forms)</h2>
 <div class="wall light" id="acc-light"></div>
 <div class="wall dark" id="acc-dark"></div>
 
@@ -50,20 +51,21 @@ const PALETTES = {
   sakura:   ['#ffe5ec', '#ffc2d1', '#ff8fab', '#f75c8b'],
   lavender: ['#e0c3fc', '#c39df0', '#9d70dc', '#7a4fc0']
 };
-const FORMS = ['egg', 'hatchling', 'junior', 'senior', 'elder'];
-const ACCESSORIES = ['bow','sprout','flower','scarf','beret','headphones','crown','wings','halo','wizardhat','balloon','sparkles'];
+const FORMS = ['egg', 'hatchling', 'junior', 'senior', 'elder', 'principal', 'legend'];
+const ACCESSORIES = ['bow','sprout','flower','scarf','beret','headphones','crown','wings','halo','wizardhat','balloon','sparkles',
+  'bell','catears','laurel','tophat','mushroom','gradcap','horns','cape','propeller','flame','moon','jetpack','rainbow','orbit','galaxy'];
 
 function cell(parent, label, drawOpts, scale = 1) {
   const wrap = document.createElement('div');
   wrap.className = 'cell';
   const c = document.createElement('canvas');
   const dpr = window.devicePixelRatio || 1;
-  const w = 150 * scale, h = 200 * scale;   // the pixel sprites are bigger than the old vector ones
+  const w = 150 * scale, h = 230 * scale;   // the pixel sprites are bigger than the old vector ones
   c.width = w * dpr; c.height = h * dpr;
   c.style.width = w + 'px'; c.style.height = h + 'px';
   const ctx = c.getContext('2d');
   ctx.scale(dpr * scale, dpr * scale);
-  ctx.translate(75, 58);
+  ctx.translate(75, 88);
   PetArt.drawPet(ctx, Object.assign({ t: 700, glow: true, mood: 'happy' }, drawOpts));
   const span = document.createElement('span');
   span.textContent = label;

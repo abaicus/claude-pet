@@ -33,18 +33,39 @@
   // Eyes are BIG — they are most of what makes the thing cute, and a 3×4 eye
   // has no room for a catchlight that reads as one.
   const FORMS = {
-    egg:       { w: 13, h: 17, cap: 0.95, shape: 'egg', ears: 'none', crest: false, tail: 0, eyeW: 2, eyeH: 3, gap: 2, eyeF: 0.40 },
-    hatchling: { w: 17, h: 12, cap: 0.85, ears: 'none', crest: false, tail: 0, eyeW: 4, eyeH: 5, gap: 1, eyeF: 0.40 },
-    junior:    { w: 19, h: 14, cap: 0.80, ears: 'nubs', crest: false, tail: 0, eyeW: 4, eyeH: 5, gap: 2, eyeF: 0.40 },
-    senior:    { w: 23, h: 16, cap: 0.75, ears: 'ears', crest: false, tail: 5, eyeW: 5, eyeH: 6, gap: 2, eyeF: 0.36 },
-    elder:     { w: 25, h: 19, cap: 0.70, ears: 'ears', crest: true,  tail: 7, eyeW: 5, eyeH: 6, gap: 2, eyeF: 0.36 }
+    egg:       { w: 13, h: 17, cap: 0.95, shape: 'egg', ears: 'none', crest: null, tail: 0, eyeW: 2, eyeH: 3, gap: 2, eyeF: 0.40 },
+    hatchling: { w: 17, h: 12, cap: 0.85, ears: 'none', crest: null, tail: 0, eyeW: 4, eyeH: 5, gap: 1, eyeF: 0.40 },
+    junior:    { w: 19, h: 14, cap: 0.80, ears: 'nubs', crest: null, tail: 0, eyeW: 4, eyeH: 5, gap: 2, eyeF: 0.40 },
+    senior:    { w: 23, h: 16, cap: 0.75, ears: 'ears', crest: null, tail: 5, eyeW: 5, eyeH: 6, gap: 2, eyeF: 0.36 },
+    elder:     { w: 25, h: 19, cap: 0.70, ears: 'ears', crest: 'tuft', tail: 7, eyeW: 5, eyeH: 6, gap: 2, eyeF: 0.36 },
+    // The two forms past 25 levels of feeding. They must read as growth at a
+    // glance and not merely as "elder again, bigger": one goes TALL and slim
+    // with long ears, the other keeps the elder's build and grows a crest.
+    principal: { w: 21, h: 24, cap: 0.55, ears: 'long', crest: null, tail: 7, eyeW: 5, eyeH: 6, gap: 2, eyeF: 0.30 },
+    legend:    { w: 25, h: 22, cap: 0.70, ears: 'ears', crest: 'mane', tail: 7, eyeW: 5, eyeH: 6, gap: 2, eyeF: 0.32 }
   };
 
-  const TOP_EXTRA = { none: 0, nubs: 3, ears: 4 }; // silhouette above the dome
+  const TOP_EXTRA = { none: 0, nubs: 3, ears: 4, long: 5 }; // silhouette above the dome
+
+  // Crests, in art pixels above the crown. The elder's punk tuft leans right
+  // on purpose; the legend's mane is the same idea grown into a fin.
+  const CRESTS = {
+    tuft: [[0, 1], [0, 2], [1, 1], [-1, 1], [1, 3]],
+    // Two prongs off a common base, the taller one leaning with the tuft it
+    // grew from. A smooth triangle here just reads as a pointed hat.
+    mane: [[-3, 1], [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1],
+      [-3, 2], [-2, 2], [0, 2], [1, 2],
+      [-3, 3], [-2, 3], [0, 3], [1, 3],
+      [0, 4], [1, 4],
+      [0, 5], [1, 5]]
+  };
+  // …measured, never declared twice: a crest that reached one row past the
+  // number next to it would poke through the top of its own window.
+  const crestH = (F) => (CRESTS[F.crest] || []).reduce((h, c) => Math.max(h, c[1]), 0);
 
   const GEOM = {}; // logical box per form — the speech bubble anchors off this
   for (const [name, F] of Object.entries(FORMS)) {
-    GEOM[name] = { w: F.w * PX, h: (F.h + TOP_EXTRA[F.ears] + (F.crest ? 2 : 0)) * PX };
+    GEOM[name] = { w: F.w * PX, h: (F.h + TOP_EXTRA[F.ears] + crestH(F)) * PX };
   }
 
   // The window box, shared by the two files that have to agree on it: main.js
@@ -93,7 +114,7 @@
   }
 
   function bodyColor(form, ramp) {
-    const idx = { hatchling: 0, junior: 1, senior: 2, elder: 3 }[form];
+    const idx = { hatchling: 0, junior: 1, senior: 2, elder: 3, principal: 3, legend: 3 }[form];
     return idx === undefined ? EGG.light : ramp[idx];
   }
 
@@ -165,9 +186,21 @@
         [4, 4, 3, 2].forEach((n, r) => { for (let i = 0; i < n; i++) m.add(key(bx + s * i, top - 1 + r)); });
       }
     }
-    if (F.crest) {
-      for (const [dx, dy] of [[0, 1], [0, 2], [1, 1], [-1, 1], [1, 3]]) m.add(key(dx, top + dy));
+    // Long ears: attached two rows further down the dome, so they spring from
+    // the shoulders rather than clustering on the crown, and never narrower
+    // than 3 until the tip — a 2-wide ear is all outline and reads as wire.
+    if (F.ears === 'long') {
+      for (const s of [-1, 1]) {
+        const bx = s * (hw[top - 2] - 3);
+        [4, 4, 3, 3, 3, 3, 2, 1].forEach((n, r) => {
+          for (let i = 0; i < n; i++) m.add(key(bx + s * i, top - 2 + r));
+        });
+      }
     }
+    // The crest, drawn cell by cell rather than generated: these are five and
+    // sixteen pixels, and a formula that produced a pleasing tuft AND a
+    // pleasing mane would be longer than both put together.
+    for (const [dx, dy] of CRESTS[F.crest] || []) m.add(key(dx, top + dy));
     if (F.tail) {                      // a fat comma curling off the right hip
       const bx = hw[3];
       const curl = [[0, 3], [1, 3], [1, 4], [2, 4], [2, 5], [3, 5], [3, 6], [2, 6], [1, 2]];
@@ -397,7 +430,9 @@
         break;
       }
       case 'scarf': {                               // a collar just under the face
-        const y = Math.max(2, eyeY - 2);
+        // -3, not -2: the mouth sits two rows under the eyes, and a scarf
+        // through the smile is not a scarf.
+        const y = Math.max(2, eyeY - 3);
         for (let x = -(hw[y] - 1); x <= hw[y] - 1; x++) px(ctx, x, y, '#e0574f');
         for (let x = -(hw[y - 1] - 1); x <= hw[y - 1] - 1; x++) px(ctx, x, y - 1, '#f2726a');
         for (let i = 0; i < 3 && y - 2 - i >= 0; i++) px(ctx, hw[y] - 3, y - 2 - i, i === 2 ? '#c94a43' : '#e0574f');
@@ -467,8 +502,10 @@
       }
       case 'sparkles': {
         const phase = Math.sin(t / 320) > 0 ? 0 : 1;
-        const spots = [[-(hw[top - 2] + 2), top], [hw[top - 3] + 2, top - 2],
-          [-(hw[4] + 2), 5], [hw[6] + 2, 7]];
+        // +1, not +2: the spokes reach two pixels further still, and on the
+        // widest form that put the outermost one past the window edge at 2.5×.
+        const spots = [[-(hw[top - 2] + 1), top], [hw[top - 3] + 1, top - 2],
+          [-(hw[4] + 1), 5], [hw[6] + 1, 7]];
         spots.forEach(([x, y], i) => {
           const on = (i % 2) === phase;
           px(ctx, x, y, '#fff8d0', on ? 1 : 0.55);
@@ -477,10 +514,170 @@
         });
         break;
       }
+
+      // ---- lv.11 and up: one per level, all the way to 25 ----------------
+      case 'bell': {                                // collar, bell under the chin
+        const y = Math.max(1, eyeY - 3);
+        for (let x = -(hw[y] - 1); x <= hw[y] - 1; x++) px(ctx, x, y, '#c0392b');
+        rect(ctx, -1, y, 3, 2, gold);
+        px(ctx, 1, y + 1, '#fff3c4');
+        px(ctx, 0, y, INK);                         // the slit
+        break;
+      }
+      case 'catears': {                             // perked, pink inside
+        for (const s of [-1, 1]) {
+          const bx = s * (hw[top - 1] - 2);
+          [4, 3, 2, 1].forEach((n, r) => {
+            for (let i = 0; i < n; i++) px(ctx, bx + s * i, top + r, INK);
+          });
+          px(ctx, bx + s, top, '#ff9ec4'); px(ctx, bx + s, top + 1, '#ff9ec4');
+        }
+        break;
+      }
+      case 'laurel': {                              // leaves up both temples
+        for (const s of [-1, 1]) {
+          for (let i = 0; i < 5; i++) {
+            const y = top - 1 - i;
+            if (y < 1) break;
+            px(ctx, s * (hw[y] - 1), y, i % 2 ? '#7cb342' : '#aed581');
+          }
+          px(ctx, s * (hw[top - 1] - 2), top, '#c8e6a0');
+        }
+        break;
+      }
+      case 'tophat': {
+        const y = top;
+        for (let x = -4; x <= 4; x++) px(ctx, x, y + 1, INK);        // brim
+        rect(ctx, -2, y + 2, 5, 4, '#33333d');                       // crown
+        for (let x = -2; x <= 2; x++) px(ctx, x, y + 2, '#b03030');   // band
+        px(ctx, -2, y + 4, '#565663'); px(ctx, -2, y + 5, '#565663'); // a shine
+        break;
+      }
+      case 'mushroom': {                            // a red cap with white spots
+        for (let x = -4; x <= 4; x++) px(ctx, x, top + 1, '#b83838');
+        for (let x = -3; x <= 3; x++) px(ctx, x, top + 2, '#d64545');
+        for (let x = -2; x <= 2; x++) px(ctx, x, top + 3, '#e05555');
+        for (let x = -1; x <= 1; x++) px(ctx, x, top + 4, '#e05555');
+        px(ctx, -2, top + 2, '#fff3e0'); px(ctx, 2, top + 3, '#fff3e0');
+        px(ctx, 0, top + 2, '#fff3e0'); px(ctx, 3, top + 1, '#fff3e0');
+        break;
+      }
+      case 'gradcap': {
+        const y = top;
+        rect(ctx, -1, y + 1, 3, 2, '#2f2f38');                       // the skull cap
+        for (let x = -4; x <= 4; x++) px(ctx, x, y + 3, INK);        // the board
+        px(ctx, 0, y + 4, '#2f2f38');
+        for (let i = 0; i < 3; i++) px(ctx, 4, y + 2 - i, gold);     // tassel
+        px(ctx, 4, y - 1, goldDark);
+        break;
+      }
+      case 'horns': {                               // two little bone horns
+        for (const s of [-1, 1]) {
+          const bx = s * (hw[top - 1] - 1);
+          px(ctx, bx, top, '#f0e4cc'); px(ctx, bx, top + 1, '#f0e4cc');
+          px(ctx, bx + s, top + 2, '#dcc9a4');
+        }
+        break;
+      }
+      case 'cape': {                                // behind, flaring to the floor
+        const y0 = Math.min(hw.length - 1, Math.round(F.h * 0.62));
+        for (const s of [-1, 1]) {
+          for (let y = 0; y <= y0; y++) {
+            const flare = 1 + Math.round((y0 - y) / 4);   // …and no wider: see the window test
+            const base = hw[Math.min(y, hw.length - 1)];
+            for (let i = 0; i < flare; i++) {
+              px(ctx, s * (base + i), y, i === flare - 1 ? '#7a1f2b' : '#b3283c');
+            }
+          }
+        }
+        for (let x = -(hw[y0] - 1); x <= hw[y0] - 1; x++) px(ctx, x, y0 + 1, '#b3283c'); // collar
+        break;
+      }
+      case 'propeller': {
+        const y = top;
+        for (let x = -2; x <= 2; x++) px(ctx, x, y + 1, '#3f7cc9');
+        for (let x = -1; x <= 1; x++) px(ctx, x, y + 2, '#5b9ae0');
+        px(ctx, 0, y + 3, '#b9bfc7');
+        // The blade is foreshortened rather than rotated — a pixel blade that
+        // spins is a blade that changes length.
+        const len = 1 + Math.round(Math.abs(Math.sin(t / 190)) * 2);
+        for (let i = 1; i <= len; i++) {
+          px(ctx, i, y + 4, '#e05555');
+          px(ctx, -i, y + 4, '#f2f2f2');
+        }
+        px(ctx, 0, y + 4, '#8f959d');
+        break;
+      }
+      case 'flame': {
+        const lick = Math.sin(t / 170) > 0;
+        for (let x = -1; x <= 1; x++) px(ctx, x, top + 1, '#ff8f2e');
+        px(ctx, 0, top + 2, '#ffb74d'); px(ctx, lick ? 1 : -1, top + 2, '#ff8f2e');
+        px(ctx, 0, top + 3, '#ffe082');
+        if (lick) px(ctx, 0, top + 4, '#fff3c4');
+        break;
+      }
+      case 'moon': {                                // a crescent, drifting
+        const bob = Math.round(Math.sin(t / 760));
+        const x = hw[top - 2] + 3, y = top + bob;
+        for (const [dx, dy] of [[0, 0], [0, 1], [0, 2], [1, 3], [1, -1]]) px(ctx, x + dx, y + dy, '#ffe98a');
+        px(ctx, x + 1, y + 1, '#fff6c8', 0.45);
+        break;
+      }
+      case 'jetpack': {                             // behind, with thrust
+        const y0 = Math.min(hw.length - 1, Math.round(F.h * 0.34));
+        const puff = Math.sin(t / 110) > 0 ? 2 : 1;
+        for (const s of [-1, 1]) {
+          // OUTSIDE the silhouette: this is drawn before the body, so a tank
+          // flush with the outline is a tank nobody ever sees.
+          const x = s * (hw[y0] + 1);
+          for (let r = 0; r < 4; r++) px(ctx, x, y0 + r, r === 3 ? '#cfd4da' : '#8a8f98');
+          px(ctx, x - s, y0 + 3, '#8a8f98');           // a strap onto the shoulder
+          for (let i = 1; i <= puff; i++) {
+            px(ctx, x, y0 - i, i === 1 ? '#ffb300' : '#ff7043', i === 2 ? 0.8 : 1);
+          }
+        }
+        break;
+      }
+      case 'rainbow': {                             // an arc over the head
+        const bands = ['#e05555', '#f0a04b', '#7cc47c', '#5b9ae0'];
+        for (let b = 0; b < bands.length; b++) {
+          const R = 5 - b;
+          for (let i = 0; i <= 10; i++) {
+            const a = Math.PI * (i / 10);
+            px(ctx, Math.round(-Math.cos(a) * R), top + 1 + Math.round(Math.sin(a) * R), bands[b]);
+          }
+        }
+        break;
+      }
+      case 'orbit': {                               // a little world going round
+        const a = t / 900;
+        const R = hw[top - 2] + 4;
+        const x = Math.round(Math.cos(a) * R), y = top + 1 + Math.round(Math.sin(a) * 2);
+        rect(ctx, x - 1, y, 2, 2, '#6fa8dc');
+        px(ctx, x - 1, y + 1, '#a9cdf0');
+        px(ctx, x - 2, y, '#c9d9e8', 0.7); px(ctx, x + 2, y + 1, '#c9d9e8', 0.7);
+        break;
+      }
+      case 'galaxy': {                              // the lv.25 trophy
+        // A ring of real stars, not more sparkles: each is a four-point
+        // twinkle with a violet halo, and the whole ring turns.
+        const R = hw[top - 2] + 3;
+        for (let i = 0; i < 5; i++) {
+          const a = t / 1600 + (i * Math.PI * 2) / 5;
+          const x = Math.round(Math.cos(a) * R), y = top + 2 + Math.round(Math.sin(a) * 3);
+          const bright = Math.sin(t / 300 + i * 1.7) > -0.2;
+          px(ctx, x, y, '#fff8d0');
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            px(ctx, x + dx, y + dy, bright ? '#ffe98a' : '#c9b3f0', bright ? 0.95 : 0.5);
+          }
+          if (bright) for (const [dx, dy] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) px(ctx, x + dx, y + dy, '#c9b3f0', 0.45);
+        }
+        break;
+      }
     }
   }
 
-  const BEHIND = new Set(['wings', 'balloon']);
+  const BEHIND = new Set(['wings', 'balloon', 'cape', 'jetpack']);
 
   // ---------------------------------------------------------------- entry
   function drawPet(ctx, opts) {

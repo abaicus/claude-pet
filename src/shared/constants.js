@@ -24,11 +24,25 @@ const FILES = {
 };
 
 // ---------------------------------------------------------------- leveling
-const XP_LADDER = [0, 50, 120, 250, 450, 700, 1000, 1500, 2200, 3000, 4200];
-const MAX_LEVEL = XP_LADDER.length - 1; // 10
+// The first eleven rungs are FROZEN. Re-spacing them would silently demote
+// every pet already on the ladder — a level is the one thing this app has
+// asked people to earn, so the extension is appended and nothing else.
+// Beyond that the steps grow ~15% a rung: level 25 is roughly three months of
+// heavy daily use, which is the point of having it.
+const XP_LADDER = [
+  0, 50, 120, 250, 450, 700, 1000, 1500, 2200, 3000, 4200,
+  5700, 7500, 9600, 12100, 15000, 18400, 22300, 26800, 31900,
+  37700, 44300, 51700, 60000, 69200, 79400
+];
+const MAX_LEVEL = XP_LADDER.length - 1; // 25
 
-const FORMS = ['egg', 'hatchling', 'junior', 'senior', 'elder'];
+// Seven silhouettes. The thresholds below 9 are frozen for the same reason as
+// the ladder: an elder that woke up a senior would be a bug, not a balance
+// change.
+const FORMS = ['egg', 'hatchling', 'junior', 'senior', 'elder', 'principal', 'legend'];
 function formForLevel(level) {
+  if (level >= 20) return 'legend';
+  if (level >= 14) return 'principal';
   if (level >= 9) return 'elder';
   if (level >= 6) return 'senior';
   if (level >= 3) return 'junior';
@@ -64,6 +78,9 @@ const PALETTE_NAMES = Object.keys(PALETTES);
 // ---------------------------------------------------------------- accessories
 // Exactly one equipped; unlocked by level; locks enforced by the brain.
 // All sit off the face; wings sweep away from the body.
+//
+// Every level from 1 to MAX_LEVEL unlocks something — a level-up that hands
+// you nothing to wear is a number going up, and there is a test that says so.
 const ACCESSORIES = [
   { id: 'bow',       name: 'Bow',        level: 1 },
   { id: 'sprout',    name: 'Sprout',     level: 1 },
@@ -76,7 +93,22 @@ const ACCESSORIES = [
   { id: 'halo',      name: 'Halo',       level: 7 },
   { id: 'wizardhat', name: 'Wizard hat', level: 8 },
   { id: 'balloon',   name: 'Balloon',    level: 9 },
-  { id: 'sparkles',  name: 'Sparkles',   level: 10 }
+  { id: 'sparkles',  name: 'Sparkles',   level: 10 },
+  { id: 'bell',      name: 'Bell',       level: 11 },
+  { id: 'catears',   name: 'Cat ears',   level: 12 },
+  { id: 'laurel',    name: 'Laurel',     level: 13 },
+  { id: 'tophat',    name: 'Top hat',    level: 14 },
+  { id: 'mushroom',  name: 'Mushroom',   level: 15 },
+  { id: 'gradcap',   name: 'Grad cap',   level: 16 },
+  { id: 'horns',     name: 'Horns',      level: 17 },
+  { id: 'cape',      name: 'Cape',       level: 18 },
+  { id: 'propeller', name: 'Propeller',  level: 19 },
+  { id: 'flame',     name: 'Flame',      level: 20 },
+  { id: 'moon',      name: 'Moon',       level: 21 },
+  { id: 'jetpack',   name: 'Jetpack',    level: 22 },
+  { id: 'rainbow',   name: 'Rainbow',    level: 23 },
+  { id: 'orbit',     name: 'Orbit',      level: 24 },
+  { id: 'galaxy',    name: 'Galaxy',     level: 25 }
 ];
 
 // ---------------------------------------------------------------- sessions

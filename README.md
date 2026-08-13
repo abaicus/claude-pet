@@ -4,10 +4,17 @@ A desktop tamagotchi that floats above all windows and feeds on Claude Code
 activity. No dock icon, no window chrome — a critter, not an app. It observes
 coding sessions and reacts; it never interferes with them.
 
-Beyond the toy: it taps you on the shoulder when Claude is blocked waiting on
-you (notification relay with chime, bypasses mute), and it surfaces live
-context-usage telemetry per session in a stats line you raise by putting the
-cursor on it (`Pixel lv.6 │ 2 sessions │ ctx ~72% │ 41k/5h │ ✓×5 │ ☑ 3/7`).
+Beyond the toy: it answers "which terminal is waiting on me?". Every live
+session gets its own line under the pet saying exactly what it is doing, and
+the pet wears a `!` for as long as one of them is actually blocked on you.
+
+```
+              Pixel lv.6 │ 41k/5h │ ✓×5 │ ☑ 3/7
+    ! claudy-pet · needs permission 12s · ~34%     ← amber: it cannot continue
+    … api-server · waiting for you 4m · ~71%
+    ✓ web · done 2m · ~18%                         ← your turn
+    ▸ docs-site · working · ~9%                     ← needs nothing from you
+```
 
 ## Run
 
@@ -26,9 +33,14 @@ the hook script is fire-and-forget and can never block or fail a session.
 
 - **Left-click** the pet: petting (~45% of the time it answers with a real
   session fact). **Double-click**: cookie treat (5-min cooldown).
-- **Hover** it: the stats line and per-session strip come up under the feet,
-  and drop away again when you leave. A pet that permanently wears a status
-  bar is a widget; the numbers are there when you reach for them.
+- **Hover** it: the stats line and the per-session lines come up under the
+  feet, and drop away again when you leave. A pet that permanently wears a
+  status bar is a widget; the numbers are there when you reach for them. The
+  window grows to fit them, feet planted, so the pet never jumps.
+- **A finished turn announces itself** by project (`claudy-pet · your turn~ ✓`,
+  once per session per 25s), a permission prompt relays Claude's own words in
+  amber, and the `!` badge stays up until that session does something —
+  answering the prompt clears it.
 - **Drag** anywhere; position persists. The window is only ever as tall as the
   creature plus its speech room — macOS will not place a window above the menu
   bar, so a fixed tall box is a pet that cannot be dragged near the top of the
@@ -44,7 +56,7 @@ the hook script is fire-and-forget and can never block or fail a session.
   | **`⌘⌥M`** sounds | **`⌘⌥P`** click-through | **`⌘⌥Q`** quit |
 
   `⌘⌥P` is the escape hatch: a click-through pet can't offer its own way back.
-- **Settings**: name, 12 palettes, 12 level-locked accessories, speech
+- **Settings**: name, 12 palettes, 27 level-locked accessories, speech
   bubble / stats line / glow toggles, size slider, sounds (synthesized
   chiptune, **off by default** — important notifications always chime; the
   volume slider samples the level as you drag it, and stays quiet when muted),
@@ -58,10 +70,12 @@ every accessory, so nothing floats off the body; the palette hues the whole
 creature. It is never quite still: it breathes, blinks, glances around, and
 fidgets every few seconds (a look, a stretch, a bounce, a shimmy) — all of
 that is the renderer's own business, the same as blinking, and the brain has
-no opinion about it. The pet levels 0–10 through five forms (egg → hatchling
-→ junior → senior → elder) on xp from commits, green tests, PRs, deploys and
-edits. Context warnings fire once at ~75% and ~90% per session and re-arm
-below 60%.
+no opinion about it. The pet levels 0–25 through seven forms (egg → hatchling
+→ junior → senior → elder → principal → legend) on xp from commits, green
+tests, PRs, deploys and edits, and every level from 1 up unlocks something to
+wear. The ladder is append-only: the first eleven rungs are frozen, because
+re-spacing them would silently demote every pet already standing on one.
+Context warnings fire once at ~75% and ~90% per session and re-arm below 60%.
 
 ## What it notices
 
@@ -85,6 +99,11 @@ The hook payloads carry far more than "a tool ran", so the pet reads them:
   only the change.
 - **Session shape**: resume vs clear vs startup, manual vs auto compaction,
   and a permission prompt vs Claude idly waiting on you (different chimes).
+- **Whose move it is.** Every event moves its session's status: a tool call or
+  a prompt means *working*, a permission Notification means *blocked on you*,
+  an idle one means *waiting*, and `Stop` means the turn ended and it's your
+  keyboard. `SubagentStop` deliberately does not — a helper finishing is not
+  the turn finishing, and saying so would be a lie about whose move it is.
 
 ### Where the context number comes from
 
