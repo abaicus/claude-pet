@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; padding: 14px 18px 24px;
+    font-family: -apple-system, sans-serif; font-size: 13px;
+    background: light-dark(#f5f4f2, #232226);
+    color: light-dark(#333, #ddd);
+    -webkit-user-select: none; user-select: none;
+  }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; opacity: 0.55; margin: 20px 0 8px; }
+  section { margin-bottom: 4px; }
+  input[type=text] {
+    width: 140px; padding: 5px 8px; border-radius: 6px;
+    border: 1px solid light-dark(#ccc, #4a4950);
+    background: light-dark(#fff, #313036); color: inherit; font-size: 13px;
+  }
+  .row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+  .row label { flex: 1; }
+  .swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; }
+  .swatch {
+    height: 26px; border-radius: 7px; cursor: pointer; display: flex; overflow: hidden;
+    outline: 2px solid transparent; outline-offset: 1px;
+  }
+  .swatch.sel { outline-color: light-dark(#3478f6, #6ea8ff); }
+  .swatch i { flex: 1; }
+  .accs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .acc {
+    padding: 7px 4px; text-align: center; border-radius: 8px; cursor: pointer;
+    background: light-dark(#fff, #313036);
+    border: 1px solid light-dark(#ddd, #454449);
+    font-size: 11.5px;
+  }
+  .acc.sel { border-color: light-dark(#3478f6, #6ea8ff); box-shadow: 0 0 0 1px light-dark(#3478f6, #6ea8ff); }
+  .acc.locked { opacity: 0.45; cursor: not-allowed; }
+  .acc small { display: block; opacity: 0.6; font-size: 9.5px; margin-top: 1px; }
+  input[type=range] { flex: 2; }
+  button {
+    padding: 5px 12px; border-radius: 7px; font-size: 12.5px; cursor: pointer;
+    border: 1px solid light-dark(#c8c7c4, #4a4950);
+    background: light-dark(#fff, #3a393f); color: inherit;
+  }
+  button:hover { background: light-dark(#f0efec, #454449); }
+  button.danger { color: #e5484d; border-color: #e5484d; }
+  button.danger.armed { background: #e5484d; color: #fff; }
+  #hook-status { font-size: 11.5px; opacity: 0.7; }
+  #hook-status.bad { color: #e5484d; opacity: 1; }
+  .debug-grid { display: flex; flex-wrap: wrap; gap: 5px; }
+  .debug-grid button { font-size: 11px; padding: 3px 8px; }
+  .statline { font-family: ui-monospace, Menlo, monospace; font-size: 11px; opacity: 0.75; margin-top: 4px; }
+</style>
+</head>
+<body>
+  <section>
+    <h2>Name</h2>
+    <div class="row">
+      <input type="text" id="name" maxlength="12" spellcheck="false">
+      <span id="level-label" class="statline"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Palette</h2>
+    <div class="swatches" id="palettes"></div>
+  </section>
+
+  <section>
+    <h2>Accessory <span style="text-transform:none;opacity:.7">(one at a time, unlocked by level)</span></h2>
+    <div class="accs" id="accessories"></div>
+  </section>
+
+  <section>
+    <h2>Appearance</h2>
+    <div class="row"><label for="t-bubbles">Speech bubbles</label><input type="checkbox" id="t-bubbles"></div>
+    <div class="row"><label for="t-stats">Stats line</label><input type="checkbox" id="t-stats"></div>
+    <div class="row"><label for="t-glow">Glow</label><input type="checkbox" id="t-glow"></div>
+    <div class="row"><label>Size</label><input type="range" id="scale" min="0.5" max="2" step="0.05"><span id="scale-label" class="statline"></span></div>
+  </section>
+
+  <section>
+    <h2>Sound</h2>
+    <div class="row"><label for="t-sound">Sounds (chiptune, synthesized)</label><input type="checkbox" id="t-sound"></div>
+    <div class="row"><label>Volume</label><input type="range" id="volume" min="0" max="1" step="0.05"></div>
+    <div class="statline">important notifications always chime</div>
+  </section>
+
+  <section>
+    <h2>Claude hooks</h2>
+    <div class="row">
+      <button id="hooks-install">Reinstall</button>
+      <button id="hooks-uninstall">Uninstall</button>
+      <span id="hook-status"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Danger zone</h2>
+    <div class="row">
+      <button class="danger" id="reset">Reset to lv.0…</button>
+      <span class="statline" id="reset-note">wipes xp, stats, accessory — keeps name, palette, sound, position</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Debug — state</h2>
+    <div class="row"><label>Level</label><input type="range" id="dbg-level" min="0" max="10" step="1"><span class="statline" id="dbg-level-label"></span></div>
+    <div class="row"><label>Food</label><input type="range" id="dbg-food" min="0" max="200" step="1"><span class="statline" id="dbg-food-label"></span></div>
+    <div class="row"><label>Energy</label><input type="range" id="dbg-energy" min="0" max="100" step="1"><span class="statline" id="dbg-energy-label"></span></div>
+    <div class="row"><label>Mood</label><input type="range" id="dbg-mood" min="0" max="100" step="1"><span class="statline" id="dbg-mood-label"></span></div>
+    <div class="debug-grid" style="margin-top:5px">
+      <button id="dbg-xp">+100 xp</button>
+      <button id="dbg-commits9">commits → next is 10th</button>
+      <button id="dbg-streak4">streak → next is 5th</button>
+      <button id="dbg-tokens">tokens → next 1M soon</button>
+      <button id="dbg-sleep">sleep</button>
+      <button id="dbg-wake">wake</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Debug — fake events</h2>
+    <div class="debug-grid" id="debug-events"></div>
+  </section>
+
+  <section>
+    <h2>Debug — anims &amp; sounds</h2>
+    <div class="debug-grid" id="debug-anims"></div>
+    <div class="debug-grid" style="margin-top:5px" id="debug-sounds"></div>
+    <div class="debug-grid" style="margin-top:5px">
+      <button id="dbg-bubble">bubble</button>
+      <button id="dbg-important">important bubble</button>
+    </div>
+  </section>
+
+  <script src="settings.js"></script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>claude-pet — art direction mockups</title>
+<style>
+  body { margin: 0; font-family: -apple-system, sans-serif; background: #2a2a2e; color: #ddd; }
+  h1 { font-size: 18px; padding: 16px 20px 0; }
+  h2 { font-size: 13px; padding: 0 20px; font-weight: 600; opacity: 0.7; }
+  .wall { display: flex; flex-wrap: wrap; gap: 0; padding: 12px; margin: 10px 20px 26px; border-radius: 12px; }
+  /* light + dark "desktop wallpaper" approximations, with gradient texture */
+  .light { background: linear-gradient(135deg, #dfe9f3 0%, #f6f8fb 45%, #e8e2d8 100%); color: #333; }
+  .dark  { background: linear-gradient(135deg, #1b2735 0%, #090a0f 60%, #24202c 100%); }
+  .cell { display: flex; flex-direction: column; align-items: center; padding: 6px 10px; }
+  .cell span { font-size: 10px; opacity: 0.6; margin-top: -6px; }
+  canvas { image-rendering: auto; }
+  .note { padding: 0 20px 30px; font-size: 12px; opacity: 0.55; max-width: 720px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<h1>claude-pet — art direction (code-drawn, real size)</h1>
+<div class="note">
+  Five forms, five silhouettes — egg → hatchling → junior → senior → elder.
+  Ramp color shifts one step per evolution. Face untouched by every accessory.
+  Rim-light glow + ground shadow only. Rows render on light and dark wallpaper.
+</div>
+
+<h2>Forms × sample palettes (mint · sky · sunset · sakura) — 1× scale</h2>
+<div class="wall light" id="forms-light"></div>
+<div class="wall dark" id="forms-dark"></div>
+
+<h2>All 12 accessories (junior + senior forms)</h2>
+<div class="wall light" id="acc-light"></div>
+<div class="wall dark" id="acc-dark"></div>
+
+<h2>Moods & states (senior, mint)</h2>
+<div class="wall light" id="moods-light"></div>
+<div class="wall dark" id="moods-dark"></div>
+
+<h2>Scale check — 0.75× / 1× / 1.5× / 2×</h2>
+<div class="wall light" id="scale-light"></div>
+<div class="wall dark" id="scale-dark"></div>
+
+<script src="../src/body/art.js"></script>
+<script>
+const PALETTES = {
+  mint:     ['#a8e6cf', '#7bd4b2', '#4fbf96', '#2e9c78'],
+  sky:      ['#bde0fe', '#8ec9f5', '#5fa8e8', '#3c82c4'],
+  sunset:   ['#ffd97d', '#ffb26b', '#ff7f51', '#e0503a'],
+  sakura:   ['#ffe5ec', '#ffc2d1', '#ff8fab', '#f75c8b'],
+  lavender: ['#e0c3fc', '#c39df0', '#9d70dc', '#7a4fc0']
+};
+const FORMS = ['egg', 'hatchling', 'junior', 'senior', 'elder'];
+const ACCESSORIES = ['bow','sprout','flower','scarf','beret','headphones','crown','wings','halo','wizardhat','balloon','sparkles'];
+
+function cell(parent, label, drawOpts, scale = 1) {
+  const wrap = document.createElement('div');
+  wrap.className = 'cell';
+  const c = document.createElement('canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const w = 130 * scale, h = 140 * scale;
+  c.width = w * dpr; c.height = h * dpr;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr * scale, dpr * scale);
+  ctx.translate(65, 6);
+  PetArt.drawPet(ctx, Object.assign({ t: 700, glow: true, mood: 'happy' }, drawOpts));
+  const span = document.createElement('span');
+  span.textContent = label;
+  wrap.appendChild(c); wrap.appendChild(span);
+  parent.appendChild(wrap);
+}
+
+for (const theme of ['light', 'dark']) {
+  const formsEl = document.getElementById('forms-' + theme);
+  for (const [pname, ramp] of Object.entries(PALETTES)) {
+    if (pname === 'lavender') continue;
+    for (const form of FORMS) {
+      if (form === 'egg' && pname !== 'mint') continue; // egg ignores palettes — show it once
+      cell(formsEl, form === 'egg' ? 'egg' : `${form}·${pname}`, { form, ramp });
+    }
+  }
+
+  const accEl = document.getElementById('acc-' + theme);
+  ACCESSORIES.forEach((acc, i) => {
+    cell(accEl, acc, { form: i % 2 ? 'senior' : 'junior', ramp: PALETTES.lavender, accessory: acc });
+  });
+
+  const moodsEl = document.getElementById('moods-' + theme);
+  cell(moodsEl, 'happy', { form: 'senior', ramp: PALETTES.mint, mood: 'happy' });
+  cell(moodsEl, 'neutral', { form: 'senior', ramp: PALETTES.mint, mood: 'neutral' });
+  cell(moodsEl, 'grumpy', { form: 'senior', ramp: PALETTES.mint, mood: 'grumpy' });
+  cell(moodsEl, 'sleeping', { form: 'senior', ramp: PALETTES.mint, sleeping: true });
+  cell(moodsEl, 'eating', { form: 'senior', ramp: PALETTES.mint, mouthOpen: true, squash: 0.04 });
+  cell(moodsEl, 'no glow', { form: 'senior', ramp: PALETTES.mint, glow: false });
+  cell(moodsEl, 'eyes left', { form: 'senior', ramp: PALETTES.mint, eyeTrack: -1 });
+  cell(moodsEl, 'eyes right', { form: 'senior', ramp: PALETTES.mint, eyeTrack: 1 });
+
+  const scaleEl = document.getElementById('scale-' + theme);
+  for (const s of [0.75, 1, 1.5, 2]) {
+    cell(scaleEl, s + '×', { form: 'junior', ramp: PALETTES.sky, accessory: 'scarf' }, s);
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,228 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { Brain } = require('../src/brain/brain');
+
+const T0 = 1_700_000_000_000;
+
+function makeBrain(extra = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pet-brain-'));
+  let now = T0;
+  const brain = new Brain({
+    dir,
+    settingsPath: path.join(dir, 'claude-settings.json'),
+    now: () => now,
+    rng: () => 0.99,
+    ...extra
+  });
+  return { brain, dir, setNow: (t) => { now = t; } };
+}
+
+test('locked accessory cannot be equipped even via a forged IPC message', () => {
+  const { brain } = makeBrain();
+  assert.equal(brain.state.level, 0);
+  const res = brain.command({ type: 'setAccessory', accessory: 'crown' }); // lv5 item
+  assert.equal(res.ok, false);
+  assert.match(res.reason, /locked/);
+  assert.equal(brain.prefs.accessory, null);
+});
+
+test('unlocked accessory equips; unknown rejected', () => {
+  const { brain } = makeBrain();
+  brain.state.xp = 500; brain.state.level = 4;
+  assert.equal(brain.command({ type: 'setAccessory', accessory: 'headphones' }).ok, true);
+  assert.equal(brain.prefs.accessory, 'headphones');
+  assert.equal(brain.command({ type: 'setAccessory', accessory: 'jetpack' }).ok, false);
+  assert.equal(brain.command({ type: 'setAccessory', accessory: null }).ok, true);
+  assert.equal(brain.prefs.accessory, null);
+});
+
+test('reset wipes progression but preserves cursor + customization', () => {
+  const { brain } = makeBrain();
+  brain.state.xp = 1000; brain.state.level = 6; brain.state.lifetimeCommits = 42;
+  brain.prefs.name = 'Bubbles'; brain.prefs.palette = 'sakura'; brain.prefs.soundOn = true;
+  brain.prefs.accessory = 'wings';
+  brain.cursor.events = 12345;
+  brain.cursor.transcripts['/x.jsonl'] = 999;
+
+  brain.command({ type: 'resetProgress' });
+
+  assert.equal(brain.state.xp, 0);
+  assert.equal(brain.state.level, 0);
+  assert.equal(brain.state.lifetimeCommits, 0);
+  assert.equal(brain.prefs.accessory, null, 'accessory is progression — wiped');
+  assert.equal(brain.prefs.name, 'Bubbles', 'name survives');
+  assert.equal(brain.prefs.palette, 'sakura', 'palette survives');
+  assert.equal(brain.prefs.soundOn, true, 'sound settings survive');
+  assert.equal(brain.cursor.events, 12345, 'event cursor survives — no refeed');
+  assert.equal(brain.cursor.transcripts['/x.jsonl'], 999, 'transcript offsets survive');
+});
+
+test('name is clamped to 12 chars; empty rejected', () => {
+  const { brain } = makeBrain();
+  brain.command({ type: 'setName', name: 'Supercalifragilistic' });
+  assert.equal(brain.prefs.name.length, 12);
+  assert.equal(brain.command({ type: 'setName', name: '   ' }).ok, false);
+});
+
+test('treat honors cooldown', () => {
+  const { brain, setNow } = makeBrain();
+  const food0 = brain.state.food;
+  assert.equal(brain.command({ type: 'treat' }).ok, true);
+  assert.equal(brain.state.food, food0 + 15);
+  assert.equal(brain.command({ type: 'treat' }).ok, false, 'not hungry yet');
+  setNow(T0 + 5 * 60_000 + 1);
+  assert.equal(brain.command({ type: 'treat' }).ok, true);
+});
+
+test('petting xp is rate-limited (not farmable)', () => {
+  const { brain, setNow } = makeBrain();
+  brain.command({ type: 'pet' });
+  const xp1 = brain.state.xp;
+  assert.ok(xp1 > 0);
+  for (let i = 0; i < 20; i++) brain.command({ type: 'pet' });
+  assert.equal(brain.state.xp, xp1, 'no xp within cooldown');
+  setNow(T0 + 3 * 60_000);
+  brain.command({ type: 'pet' });
+  assert.ok(brain.state.xp > xp1);
+});
+
+test('non-important bubbles respect mute; important ones bypass it', () => {
+  const { brain } = makeBrain();
+  brain.command({ type: 'setToggle', key: 'bubbles', value: false });
+  brain.pushBubble({ text: 'just a quip' });
+  assert.equal(brain.bubble, null, 'quip muted');
+  brain.pushBubble({ text: 'Claude needs you!', important: true });
+  assert.ok(brain.bubble, 'important bubble shown despite mute');
+  assert.equal(brain.bubble.text, 'Claude needs you!');
+});
+
+test('stats line: idle collapses, active shows real telemetry, hidden toggle', () => {
+  const { brain } = makeBrain();
+  brain.prefs.name = 'Pixel';
+  let line = brain.statsLine(T0);
+  assert.equal(line.mode, 'idle');
+  assert.equal(line.text, 'Pixel lv.0');
+
+  // fake a live session with ctx
+  brain.sessions.noteEvent({ t: 'SessionStart', ts: T0, sid: 's1', project: 'alpha' });
+  brain.sessions.session('s1').ctxTokens = 144_000;
+  brain.state.greenStreak = 5;
+  line = brain.statsLine(T0);
+  assert.equal(line.mode, 'active');
+  assert.match(line.text, /Pixel lv\.0 │ 1 session │ ctx ~72% │ .*\/5h │ ✓×5/);
+  assert.equal(line.strip.length, 0, 'no strip for a single session');
+
+  brain.sessions.noteEvent({ t: 'SessionStart', ts: T0, sid: 's2', project: 'beta' });
+  brain.sessions.session('s2').ctxTokens = 20_000;
+  line = brain.statsLine(T0);
+  assert.equal(line.strip.length, 2, 'strip appears with >1 session');
+  assert.match(line.strip[0], /alpha ~72%/, 'busiest first');
+
+  brain.command({ type: 'setToggle', key: 'statsLine', value: false });
+  assert.equal(brain.statsLine(T0).mode, 'hidden');
+});
+
+test('brain end-to-end: events file → tailer → state, cursor persists', async () => {
+  const { brain, dir } = makeBrain();
+  const eventsFile = path.join(dir, 'events.jsonl');
+  fs.writeFileSync(eventsFile,
+    JSON.stringify({ t: 'UserPromptSubmit', ts: T0 - 1000, sid: 's1' }) + '\n' +
+    JSON.stringify({ t: 'PostToolUse', ts: T0 - 900, sid: 's1', tool: 'Bash', cmd: 'git commit -m x' }) + '\n');
+
+  brain.start({ installHooks: false });
+  await new Promise(r => setTimeout(r, 80));
+  assert.equal(brain.state.lifetimeCommits, 1);
+  assert.equal(brain.fxQueue.length, 0, 'replayed events fire no fx');
+
+  fs.appendFileSync(eventsFile, JSON.stringify({ t: 'PostToolUse', ts: T0, sid: 's1', tool: 'Bash', cmd: 'git commit -m y' }) + '\n');
+  await new Promise(r => setTimeout(r, 250));
+  assert.equal(brain.state.lifetimeCommits, 2);
+  assert.ok(brain.fxQueue.some(f => f.name === 'party'), 'live event fires fx');
+
+  brain.stop();
+  const cursor = JSON.parse(fs.readFileSync(path.join(dir, 'cursor.json'), 'utf8'));
+  assert.equal(cursor.events, fs.statSync(eventsFile).size, 'cursor saved at end of log');
+
+  // relaunch: nothing re-fed
+  const brain2 = new Brain({ dir, settingsPath: path.join(dir, 's.json'), now: () => T0 + 10_000, rng: () => 0.99 });
+  assert.equal(brain2.state.lifetimeCommits, 2, 'state persisted');
+  brain2.start({ installHooks: false });
+  await new Promise(r => setTimeout(r, 80));
+  assert.equal(brain2.state.lifetimeCommits, 2, 'no double count after relaunch');
+  brain2.stop();
+});
+
+test('debug: set level moves xp to ladder, fires evolve fx on the way up', () => {
+  const { brain } = makeBrain();
+  const res = brain.command({ type: 'debugSetLevel', level: 6 });
+  assert.ok(res.ok);
+  assert.equal(brain.state.level, 6);
+  assert.equal(brain.state.xp, 1000); // XP_LADDER[6]
+  assert.equal(brain.getRenderState().form, 'senior');
+  assert.ok(brain.fxQueue.some(f => f.name === 'party' && f.big), 'evolution party fired');
+  assert.equal(brain.command({ type: 'debugSetLevel', level: 11 }).ok, false);
+  assert.equal(brain.command({ type: 'debugSetLevel', level: -1 }).ok, false);
+});
+
+test('debug: downleveling unequips an accessory that is no longer unlocked', () => {
+  const { brain } = makeBrain();
+  brain.command({ type: 'debugSetLevel', level: 7 });
+  assert.ok(brain.command({ type: 'setAccessory', accessory: 'halo' }).ok); // lv7 item
+  brain.command({ type: 'debugSetLevel', level: 3 });
+  assert.equal(brain.prefs.accessory, null, 'halo unequipped — locks stay honest in debug');
+  assert.equal(brain.state.level, 3);
+});
+
+test('debug: adjust clamps energy/mood, keeps food uncapped, xp rechecks level', () => {
+  const { brain } = makeBrain();
+  brain.command({ type: 'debugAdjust', key: 'energy', value: 999 });
+  assert.equal(brain.state.energy, 100);
+  brain.command({ type: 'debugAdjust', key: 'mood', value: -5 });
+  assert.equal(brain.state.mood, 0);
+  brain.command({ type: 'debugAdjust', key: 'food', value: 500 });
+  assert.equal(brain.state.food, 500);
+  brain.command({ type: 'debugAdjust', key: 'xp', value: 260 });
+  assert.equal(brain.state.level, 3, 'xp adjust levels up');
+  assert.equal(brain.command({ type: 'debugAdjust', key: 'nope', value: 1 }).ok, false);
+  assert.equal(brain.command({ type: 'debugAdjust', key: 'mood', value: 'NaN' }).ok, false);
+});
+
+test('debug: synthetic events run through the real reducer with live fx', () => {
+  const { brain } = makeBrain();
+  const commits = brain.state.lifetimeCommits;
+  assert.ok(brain.command({ type: 'debugEvent', name: 'commit' }).ok);
+  assert.equal(brain.state.lifetimeCommits, commits + 1);
+  assert.ok(brain.fxQueue.some(f => f.name === 'party'));
+
+  brain.command({ type: 'debugEvent', name: 'testsRed' });
+  assert.equal(brain.state.greenStreak, 0);
+  assert.ok(brain.fxQueue.some(f => f.name === 'sulk'));
+
+  brain.command({ type: 'debugEvent', name: 'notification' });
+  assert.ok(brain.bubble && brain.bubble.important, 'notification preset relays important bubble');
+
+  assert.equal(brain.command({ type: 'debugEvent', name: 'nope' }).ok, false);
+  assert.equal(brain.sessions.sessions.has('debug'), false, 'debug sid stays out of the registry');
+});
+
+test('debug: sleep toggle', () => {
+  const { brain } = makeBrain();
+  brain.command({ type: 'debugSleep', value: true });
+  assert.equal(brain.state.sleeping, true);
+  brain.command({ type: 'debugSleep', value: false });
+  assert.equal(brain.state.sleeping, false);
+});
+
+test('render state exposes the dumb-renderer contract', () => {
+  const { brain } = makeBrain();
+  const rs = brain.getRenderState();
+  for (const key of ['form', 'palette', 'accessory', 'moodBand', 'bubble', 'fx', 'statsLine', 'scale', 'toggles', 'sounds']) {
+    assert.ok(key in rs, `render state has ${key}`);
+  }
+  assert.equal(rs.form, 'egg');
+  assert.equal(rs.xpNext, 50);
+});

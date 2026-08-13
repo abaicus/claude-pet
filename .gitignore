@@ -1,0 +1,7 @@
+node_modules/
+
+# rendered by scripts/shoot-mockups.js
+mockups/*.png
+
+.DS_Store
+*.log
