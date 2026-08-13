@@ -104,7 +104,7 @@
 <div id="pet">
   <div id="ground"></div>
   <div id="bubble"></div>
-  <canvas id="stage" width="160" height="200"></canvas>
+  <canvas id="stage" width="160" height="220"></canvas>
   <div id="stats"></div>
 </div>
 
@@ -172,6 +172,7 @@ function petted() {
   play("love", 1800);
   if (now - lastPet < PET_COOLDOWN) return;
   lastPet = now;
+  beep(SOUNDS.pet);
   S.mood = clamp(S.mood + 4);
   S.xp += 1;
   // a petted pet is a chatty pet — this is where session gossip comes out
@@ -193,6 +194,7 @@ document.addEventListener("dblclick", () => {
   S.xp += 2;
   play("eat", 2200);
   say(pick(QUIPS.treat));
+  beep(SOUNDS.treat);
   save();
 });
 
@@ -219,7 +221,7 @@ try { S = { ...S, ...JSON.parse(fs.readFileSync(STATE)) }; } catch (e) {}
 
 /* ---------- customization ---------- */
 const CUSTOM_DEFAULTS = {
-  name: "", palette: "classic", accessory: "none",
+  name: "", character: "blob", palette: "classic", accessory: "none",
   showBubble: true, showStats: true, showGlow: true, volume: 60,
 };
 S.custom = { ...CUSTOM_DEFAULTS, ...(S.custom || {}) };
@@ -241,6 +243,399 @@ const ACCESSORIES = [
   { id: "sprout", label: "sprout", lv: 2 },
   { id: "scarf",  label: "scarf",  lv: 3 },
 ];
+
+// Every character hatches from the same egg. An egg is an egg.
+const EGG_GRID = [
+  "................",
+  "................",
+  "................",
+  ".....DDDDDD.....",
+  "....DBBBBBBD....",
+  "...DBBBBBBBBD...",
+  "...DBBBBBBBBD...",
+  "..DBBBBBBBBBBD..",
+  "..DBBBBBBBBBBD..",
+  "..DBBBBBBBBBBD..",
+  "..DBBBBBBBBBBD..",
+  "...DBBBBBBBBD...",
+  "....DBBBBBBD....",
+  ".....DDDDDD.....",
+  "................",
+  "................",
+];
+
+// Characters. Each stage is its OWN critter — its own 16×16 grid ('.'=empty,
+// 'D'=outline, 'B'=body/palette, 'W'=white patch) plus face geometry:
+//   top   grid row of the head's crown (anchors hat / sprout / bow)
+//   cx    left of the two centre columns (anchors mouth / hat / sprout)
+//   eye*  the sacred eye format: eyeH px tall (1-2), 1px on blink, ±1 tracking
+// The wizard stage reuses the senior body — the hat is what marks it.
+// Stage markers stay OFF the face and IN the silhouette: ears, necks, tails.
+// (Solid dark nubs on the blob read as "horns, wtf" — identity lives in the
+// character now, and the blob just gets taller.)
+const CHARACTERS = {
+  blob: {
+    label: "blob",
+    stages: {
+      hatchling: {
+        grid: [
+          "................",
+          "................",
+          "................",
+          "................",
+          "................",
+          "................",
+          "......DDDD......",
+          ".....DBBBBD.....",
+          "....DBBBBBBD....",
+          "...DBBBBBBBBD...",
+          "...DBBBBBBBBD...",
+          "...DBBBBBBBBD...",
+          "....DBBBBBBD....",
+          ".....DDDDDD.....",
+          "................",
+          "................",
+        ],
+        top: 6, cx: 7, eyeXL: 6, eyeXR: 9, eyeY: 9, eyeH: 1, mouthY: 11,
+        blushXL: 4, blushXR: 11, blushY: 10, scarfXL: 4, scarfXR: 11, scarfY: 11, feetXL: 6, feetXR: 9,
+      },
+      junior: {
+        grid: [
+          "................",
+          "................",
+          "....DDDDDDDD....",
+          "...DBBBBBBBBD...",
+          "..DBBBBBBBBBBD..",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          "..DBBBBBBBBBBD..",
+          "...DBBBBBBBBD...",
+          "....DDDDDDDD....",
+          "................",
+          "................",
+        ],
+        top: 2, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 6, eyeH: 2, mouthY: 10,
+        blushXL: 3, blushXR: 12, blushY: 9, scarfXL: 3, scarfXR: 12, scarfY: 11, feetXL: 5, feetXR: 10,
+      },
+      senior: {
+        grid: [
+          "................",
+          "....DDDDDDDD....",
+          "...DBBBBBBBBD...",
+          "..DBBBBBBBBBBD..",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          "..DBBBBBBBBBBD..",
+          "...DDDDDDDDDD...",
+          "................",
+          "................",
+        ],
+        top: 1, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 5, eyeH: 2, mouthY: 9,
+        blushXL: 3, blushXR: 12, blushY: 8, scarfXL: 3, scarfXR: 12, scarfY: 11, feetXL: 5, feetXR: 10,
+      },
+    },
+  },
+  goose: {
+    label: "goose",
+    mouthColor: "#f9a825", // the mouth IS the beak
+    bill: true, // and it's wide and flat, like a proper goose
+    feetColor: "#f9a825",
+    stages: {
+      hatchling: {
+        grid: [
+          "................",
+          "................",
+          "................",
+          "................",
+          "................",
+          ".......D........",
+          "......DDDD......",
+          ".....DBBBBD.....",
+          "....DBBBBBBD....",
+          "...DBBBBBBBBD...",
+          "...DBBBBBBBBD...",
+          "...DBBBBBBBBD...",
+          "....DBBBBBBD....",
+          ".....DDDDDD.....",
+          "................",
+          "................",
+        ],
+        top: 6, cx: 7, eyeXL: 6, eyeXR: 9, eyeY: 9, eyeH: 1, mouthY: 11,
+        blushXL: 4, blushXR: 11, blushY: 10, scarfXL: 4, scarfXR: 11, scarfY: 11, feetXL: 6, feetXR: 9,
+      },
+      junior: {
+        grid: [
+          "................",
+          "....DDDDDD......",
+          "...DBBBBBBD.....",
+          "...DBBBBBBD.....",
+          "...DBBBBBBD.....",
+          "....DBBBBD......",
+          ".....DBBD.......",
+          ".....DBBD.......",
+          "..DDDBBBBDDD....",
+          ".DBBBBBBBBBBD...",
+          ".DBBBBBBBBBBD...",
+          ".DBBBBBBBBBBD...",
+          "..DBBBBBBBBD....",
+          "...DDDDDDDD.....",
+          "................",
+          "................",
+        ],
+        top: 1, cx: 6, eyeXL: 5, eyeXR: 8, eyeY: 2, eyeH: 2, mouthY: 4,
+        blushXL: 4, blushXR: 9, blushY: 4, scarfXL: 5, scarfXR: 8, scarfY: 6, feetXL: 5, feetXR: 8,
+      },
+      senior: {
+        grid: [
+          "....DDDDDD......",
+          "...DBBBBBBD.....",
+          "...DBBBBBBD.....",
+          "...DBBBBBBD.....",
+          "....DBBBBD......",
+          ".....DBBD.......",
+          ".....DBBD.......",
+          ".....DBBD.......",
+          ".DDDDBBBBDDDD...",
+          "DBBBBBBBBBBBBD..",
+          "DBBBBBBBBBBBBD..",
+          "DBBBBBBBBBBBBD..",
+          ".DBBBBBBBBBBD...",
+          "..DDDDDDDDDD....",
+          "................",
+          "................",
+        ],
+        top: 0, cx: 6, eyeXL: 5, eyeXR: 8, eyeY: 1, eyeH: 2, mouthY: 3,
+        blushXL: 4, blushXR: 9, blushY: 3, scarfXL: 5, scarfXR: 8, scarfY: 6, feetXL: 5, feetXR: 8,
+      },
+    },
+  },
+  cat: {
+    label: "cat",
+    colors: { W: "#fffef2" },
+    stages: {
+      hatchling: {
+        grid: [
+          "................",
+          "................",
+          "................",
+          "................",
+          "................",
+          "......D..D......",
+          "......DDDD......",
+          ".....DBBBBD.....",
+          "....DBBBBBBD....",
+          "...DBBBBBBBBD...",
+          "...DBBBBBBBBD...",
+          "...DBBBBBBBBD...",
+          "....DBBBBBBD....",
+          ".....DDDDDD.....",
+          "................",
+          "................",
+        ],
+        top: 6, cx: 7, eyeXL: 6, eyeXR: 9, eyeY: 9, eyeH: 1, mouthY: 11,
+        blushXL: 4, blushXR: 11, blushY: 10, scarfXL: 4, scarfXR: 11, scarfY: 11, feetXL: 6, feetXR: 9,
+      },
+      junior: {
+        grid: [
+          "................",
+          "................",
+          "..DD........DD..",
+          "..DBD......DBD..",
+          "..DBBDDDDDDBBD..",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          "..DBBBBBBBBBBD..",
+          "...DBBBBBBBBD...",
+          "....DDDDDDDD....",
+          "................",
+          "................",
+        ],
+        top: 4, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 6, eyeH: 2, mouthY: 10,
+        blushXL: 3, blushXR: 12, blushY: 9, scarfXL: 3, scarfXR: 12, scarfY: 11, feetXL: 5, feetXR: 10,
+      },
+      senior: {
+        grid: [
+          "................",
+          "..DD........DD..",
+          "..DBD......DBD..",
+          "..DBBDDDDDDBBD..",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBWWWWBBBBD.",
+          ".DBBBBBWWBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          "..DBBBBBBBBBBD..",
+          "...DDDDDDDDDD...",
+          "................",
+          "................",
+        ],
+        top: 3, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 6, eyeH: 2, mouthY: 9,
+        blushXL: 3, blushXR: 12, blushY: 8, scarfXL: 3, scarfXR: 12, scarfY: 11, feetXL: 5, feetXR: 10,
+      },
+    },
+  },
+  gerbil: {
+    label: "gerbil",
+    colors: { W: "#fffef2" },
+    stages: {
+      hatchling: {
+        grid: [
+          "................",
+          "................",
+          "................",
+          "................",
+          "................",
+          "................",
+          "......DDDD......",
+          "....DDBBBBDD....",
+          "....DBBBBBBD....",
+          "...DBBBBBBBBD...",
+          "...DBBWWWWBBD...",
+          "...DBBWWWWBBD...",
+          "....DBBBBBBD....",
+          ".....DDDDDD.....",
+          "................",
+          "................",
+        ],
+        top: 6, cx: 7, eyeXL: 6, eyeXR: 9, eyeY: 9, eyeH: 1, mouthY: 11,
+        blushXL: 4, blushXR: 11, blushY: 10, scarfXL: 4, scarfXR: 11, scarfY: 11, feetXL: 6, feetXR: 9,
+      },
+      junior: {
+        grid: [
+          "................",
+          "................",
+          "...DD......DD...",
+          "..DBBD....DBBD..",
+          "..DBBDDDDDDBBD..",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBWWWWWWBBBD.",
+          ".DBBBWWWWWWBBBD.",
+          ".DBBBWWWWWWBBBD.",
+          "..DBBWWWWWWBBD.D",
+          "...DBBBBBBBBDDD.",
+          "....DDDDDDDD....",
+          "................",
+          "................",
+        ],
+        top: 4, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 5, eyeH: 2, mouthY: 8,
+        blushXL: 3, blushXR: 12, blushY: 7, scarfXL: 3, scarfXR: 12, scarfY: 10, feetXL: 5, feetXR: 10,
+      },
+      senior: {
+        grid: [
+          "................",
+          "...DD......DD...",
+          "..DBBD....DBBD..",
+          "..DBBDDDDDDBBD..",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBBBBBBBBBBBD.",
+          ".DBBWWWWWWWWBBD.",
+          ".DBBWWWWWWWWBBD.",
+          ".DBBBWWWWWWBBBD.",
+          ".DBBBWWWWWWBBBDD",
+          "..DBBBBBBBBBBDDD",
+          "...DDDDDDDDDD...",
+          "................",
+          "................",
+        ],
+        top: 3, cx: 7, eyeXL: 5, eyeXR: 10, eyeY: 5, eyeH: 2, mouthY: 8,
+        blushXL: 3, blushXR: 12, blushY: 7, scarfXL: 3, scarfXR: 12, scarfY: 10, feetXL: 5, feetXR: 10,
+      },
+    },
+  },
+  dog: {
+    label: "dog",
+    colors: { W: "#fffef2" },
+    stages: {
+      hatchling: {
+        grid: [
+          "................",
+          "................",
+          "................",
+          "................",
+          "................",
+          ".........D......",
+          "......DDDD......",
+          "....DDBBBBD.....",
+          "...DDBBBBBBD....",
+          "...DBBBBBBBBD...",
+          "...DBBBBBBBBD...",
+          "...DBBBBBBBBD...",
+          "....DBBBBBBD....",
+          ".....DDDDDD.....",
+          "................",
+          "................",
+        ],
+        top: 6, cx: 7, eyeXL: 6, eyeXR: 9, eyeY: 9, eyeH: 1, mouthY: 11,
+        blushXL: 4, blushXR: 11, blushY: 10, scarfXL: 4, scarfXR: 11, scarfY: 11, feetXL: 6, feetXR: 9,
+      },
+      junior: {
+        grid: [
+          "................",
+          "................",
+          "....DDDDDDDD....",
+          "...DBBBBBBBBD...",
+          ".DDDBBBBBBBBDDD.",
+          ".DBBDBWWWWBDBBD.",
+          ".DBBDBWWWWBDBBD.",
+          ".DBBDBBBBBBDBBD.",
+          "..DDDBBBBBBDDD..",
+          "..DBBBBBBBBBBD..",
+          "..DBBBBBBBBBBD..",
+          "..DBBBBBBBBBBD..",
+          "...DBBBBBBBBD...",
+          "....DDDDDDDD....",
+          "................",
+          "................",
+        ],
+        top: 2, cx: 7, eyeXL: 6, eyeXR: 9, eyeY: 3, eyeH: 2, mouthY: 6,
+        blushXL: 5, blushXR: 10, blushY: 5, scarfXL: 3, scarfXR: 12, scarfY: 9, feetXL: 5, feetXR: 10,
+      },
+      senior: {
+        grid: [
+          "................",
+          "...DDDDDDDDDD...",
+          "..DBBBBBBBBBBD..",
+          ".DDDBBBBBBBBDDD.",
+          "DBBDBBBBBBBBDBBD",
+          "DBBDBWWWWWWBDBBD",
+          "DBBDBWWWWWWBDBBD",
+          "DBBDBBBBBBBBDBBD",
+          ".DDDBBBBBBBBDDD.",
+          "..DBBBBBBBBBBD..",
+          "..DBBWWWWWWBBD..",
+          "..DBBWWWWWWBBD..",
+          "...DBBBBBBBBD...",
+          "....DDDDDDDD....",
+          "................",
+          "................",
+        ],
+        top: 1, cx: 7, eyeXL: 6, eyeXR: 9, eyeY: 3, eyeH: 2, mouthY: 6,
+        blushXL: 4, blushXR: 11, blushY: 5, scarfXL: 3, scarfXR: 12, scarfY: 9, feetXL: 5, feetXR: 10,
+      },
+    },
+  },
+};
 
 const IDLE_MS = 60e3; // "you've actually stopped working" threshold
 const save = () => { try { fs.writeFileSync(STATE, JSON.stringify(S)); } catch (e) {} };
@@ -291,6 +686,15 @@ const QUIPS = {
   pet: ["hehe", "*purrs*", "scritches!!", "more pets pls"],
   treat: ["*CRUNCH*", "cookie!!", "snack time ♡"],
   notreat: ["not hungry rn", "*saves it for later*", "cookie jar's empty"],
+  hatch: ["*crack* hello world!", "I have HATCHED", "born to code"],
+  notify: ["claude needs you!", "boss! input required", "*taps glass* attention pls"],
+  compact: ["compacting memories...", "*squeezes context*", "making room to think"],
+  minion: ["a minion returns ✓", "subagent came home", "the helper delivered"],
+  push: ["pushed to the cloud ☁", "code has left the building", "upstream: fed"],
+  deps: ["crunchy dependencies", "*installing loudly*", "node_modules grows..."],
+  web: ["surfing the web 🌐", "*googles furiously*", "the internet knows things"],
+  read: ["*reading intensifies*", "hm, interesting file", "skimming..."],
+  branch: ["new branch, new me", "branching out!", "a fresh twig to climb"],
 };
 
 /* ---------- sound (off by default, toggled from the right-click menu) ---------- */
@@ -316,11 +720,24 @@ function beep(seq) {
     }
   } catch (e) {}
 }
+// One motif per action, all tiny and square. The quiet ones (eat) are also
+// throttled where they're wired up — a busy session must never become a
+// metronome.
 const SOUNDS = {
-  levelup: [[523, 0.09], [659, 0.09], [784, 0.09], [1047, 0.24]],
-  green:   [[784, 0.08], [1047, 0.16]],
-  commit:  [[659, 0.07], [880, 0.14]],
-  red:     [[330, 0.12], [247, 0.22]],
+  levelup:   [[523, 0.09], [659, 0.09], [784, 0.09], [1047, 0.24]],
+  green:     [[784, 0.08], [1047, 0.16]],
+  commit:    [[659, 0.07], [880, 0.14]],
+  red:       [[330, 0.12], [247, 0.22]],
+  eat:       [[392, 0.06], [523, 0.08]],
+  pet:       [[880, 0.05], [1319, 0.1]],
+  treat:     [[523, 0.05], [659, 0.05], [784, 0.12]],
+  wake:      [[440, 0.07], [554, 0.07], [659, 0.14]],
+  sleep:     [[659, 0.12], [494, 0.12], [392, 0.2]],
+  sad:       [[294, 0.1], [262, 0.18]],
+  notify:    [[988, 0.07], [784, 0.07], [988, 0.12]],
+  warn:      [[988, 0.09], [740, 0.09], [988, 0.09], [740, 0.14]],
+  gossip:    [[698, 0.05], [880, 0.08]],
+  transform: [[440, 0.06], [554, 0.06], [659, 0.06], [880, 0.16]],
 };
 
 ipcRenderer.on("pet-sound", (_e, on) => {
@@ -342,6 +759,7 @@ function pushState() {
     custom: S.custom,
     palettes: PALETTES,
     accessories: ACCESSORIES,
+    characters: Object.entries(CHARACTERS).map(([id, c]) => ({ id, label: c.label })),
   });
 }
 pushState();
@@ -367,12 +785,19 @@ ipcRenderer.on("pet-custom-set", (_e, patch) => {
   }
   if (typeof p.name === "string") p.name = p.name.slice(0, 12);
   if ("palette" in p && !PALETTES[p.palette]) delete p.palette;
+  if ("character" in p && (!CHARACTERS[p.character] || p.character === S.custom.character)) delete p.character;
   if ("accessory" in p) {
     const a = ACCESSORIES.find((x) => x.id === p.accessory);
     if (!a || level() < a.lv) delete p.accessory; // no picking locks from the page
   }
   if ("volume" in p) p.volume = clamp(Number(p.volume) || 0);
   Object.assign(S.custom, p);
+  if ("character" in p && level() > 0) {
+    // reincarnation deserves a little ceremony (an egg keeps its secret)
+    play("party", 2500);
+    say("*poof* I'm a " + CHARACTERS[p.character].label + " now!");
+    beep(SOUNDS.transform);
+  }
   applyVisibility();
   // hear what you just dialed in (throttled — the slider streams changes)
   if (S.sound && (!hadSound || S.custom.volume !== hadVol) && Date.now() - lastBeepPreview > 400) {
@@ -460,6 +885,8 @@ function reactToTestRun(text, exitedOk) {
 }
 
 /* ---------- event ingestion ---------- */
+let lastEatBeep = 0; // edits arrive in bursts; the nibble blip must not
+
 function applyEvent(ev) {
   const t = ev.hook_event_name || "";
   const tool = ev.tool_name || "";
@@ -468,7 +895,7 @@ function applyEvent(ev) {
   S.lastEvent = Date.now();
   trackSession(ev);
 
-  if (t === "SessionStart") { S.mood = clamp(S.mood + 10); play("happy", 2500); say(pick(QUIPS.wake)); }
+  if (t === "SessionStart") { S.mood = clamp(S.mood + 10); play("happy", 2500); say(pick(QUIPS.wake)); beep(SOUNDS.wake); }
   else if (t === "UserPromptSubmit") { S.mood = clamp(S.mood + 2); play("happy", 1200); }
   else if (t === "PostToolUse") {
     S.xp += 2; S.energy = clamp(S.energy - 1);
@@ -476,6 +903,7 @@ function applyEvent(ev) {
       S.hunger = clamp(S.hunger - 8); S.xp += 3;
       play("eat", 2000);
       if (Math.random() < 0.25) say(pick(QUIPS.eat));
+      if (Date.now() - lastEatBeep > 8000) { lastEatBeep = Date.now(); beep(SOUNDS.eat); }
     }
     if (tool === "Bash") {
       if (cmd.includes("git commit")) {
@@ -483,22 +911,44 @@ function applyEvent(ev) {
         play("party", 3500); say(pick(QUIPS.commit)); beep(SOUNDS.commit);
       } else if (isTestCmd(cmd)) {
         reactToTestRun(ev.output, true);
+      } else if (/\bgit\s+push\b/.test(cmd)) {
+        S.mood = clamp(S.mood + 10); S.xp += 10;
+        play("party", 3000); say(pick(QUIPS.push)); beep(SOUNDS.commit);
+      } else if (/\b(?:npm|pnpm|yarn|bun)\s+(?:i|install|add)\b/.test(cmd)) {
+        S.hunger = clamp(S.hunger - 4);
+        play("eat", 2000); if (Math.random() < 0.6) say(pick(QUIPS.deps));
+      } else if (/\bgit\s+(?:checkout\s+-b|switch\s+-c)\b/.test(cmd) && Math.random() < 0.6) {
+        play("happy", 1500); say(pick(QUIPS.branch));
       }
     }
+    // the quieter tools get the occasional aside instead of silence
+    else if ((tool === "WebSearch" || tool === "WebFetch") && Math.random() < 0.2) { play("happy", 1500); say(pick(QUIPS.web)); }
+    else if (tool === "Task" && Math.random() < 0.35) { play("happy", 1500); say("recruiting minions!"); }
+    else if (["Read", "Grep", "Glob"].includes(tool) && Math.random() < 0.06) { say(pick(QUIPS.read)); }
   }
   else if (t === "PostToolUseFailure") {
     S.fails++;
     if (tool === "Bash" && isTestCmd(cmd)) {
       reactToTestRun(ev.error || ev.output, false);
     } else {
-      S.mood = clamp(S.mood - 8); play("sad", 3000); say(pick(QUIPS.fail));
+      S.mood = clamp(S.mood - 8); play("sad", 3000); say(pick(QUIPS.fail)); beep(SOUNDS.sad);
     }
   }
+  // Claude is waiting on the human — the one event worth interrupting for.
+  else if (t === "Notification") {
+    play("happy", 3000);
+    say(ev.message ? "☝ " + ev.message.slice(0, 90) : pick(QUIPS.notify), true);
+    beep(SOUNDS.notify);
+  }
+  else if (t === "PreCompact") { play("eat", 2500); say(pick(QUIPS.compact)); }
+  else if (t === "SubagentStop") { S.xp += 3; if (Math.random() < 0.3) say(pick(QUIPS.minion)); }
   else if (t === "Stop") { S.xp += 5; S.mood = clamp(S.mood + 3); if (Math.random() < 0.3) say(pick(QUIPS.rest)); }
   else if (t === "SessionEnd") { S.energy = clamp(S.energy + 20); }
 
   if (level() > oldLevel) {
-    play("party", 5000); say(pick(QUIPS.levelup)); S.mood = 100; beep(SOUNDS.levelup);
+    play("party", 5000);
+    say(oldLevel === 0 ? pick(QUIPS.hatch) : pick(QUIPS.levelup));
+    S.mood = 100; beep(SOUNDS.levelup);
     pushState(); // a level-up can unlock accessories — tell the settings page
   }
 }
@@ -612,6 +1062,7 @@ function contextWarnings() {
       s.warned = tier;
       say(`⚠ context ~${pct}% in ${proj(s)}${tier >= 90 ? " — /compact soon!" : ""}`, tier >= 90);
       play(tier >= 90 ? "sad" : "happy", 2500);
+      beep(SOUNDS.warn);
     }
   }
 }
@@ -644,6 +1095,7 @@ setInterval(() => {
   if (fact) {
     say(fact);
     play("happy", 1500);
+    beep(SOUNDS.gossip);
   }
 }, 150e3);
 
@@ -722,89 +1174,26 @@ const cv = document.getElementById("stage");
 const cx = cv.getContext("2d");
 cx.imageSmoothingEnabled = false;
 const PX = 10; // 16x16 grid
-// Four spare rows above the grid. The blob's crown is grid row 2, so a hat has
-// to be drawn at negative rows to sit ON TOP of the head instead of across it —
-// and the party bob lifts everything another 2 rows. Without the headroom the
-// hat clips straight off the canvas.
-const TOP = 4;
-
-// blob body, '.'=empty, 'B'=body, 'D'=outline
-const BLOB = [
-  "................",
-  "................",
-  "....DDDDDDDD....",
-  "...DBBBBBBBBD...",
-  "..DBBBBBBBBBBD..",
-  ".DBBBBBBBBBBBBD.",
-  ".DBBBBBBBBBBBBD.",
-  ".DBBBBBBBBBBBBD.",
-  ".DBBBBBBBBBBBBD.",
-  ".DBBBBBBBBBBBBD.",
-  ".DBBBBBBBBBBBBD.",
-  "..DBBBBBBBBBBD..",
-  "...DBBBBBBBBD...",
-  "....DDDDDDDD....",
-  "................",
-  "................",
-];
-const EGG = [
-  "................",
-  "................",
-  "................",
-  ".....DDDDDD.....",
-  "....DBBBBBBD....",
-  "...DBBBBBBBBD...",
-  "...DBBBBBBBBD...",
-  "..DBBBBBBBBBBD..",
-  "..DBBBBBBBBBBD..",
-  "..DBBBBBBBBBBD..",
-  "..DBBBBBBBBBBD..",
-  "...DBBBBBBBBD...",
-  "....DBBBBBBD....",
-  ".....DDDDDD.....",
-  "................",
-  "................",
-];
-
-// a hatchling is a much smaller critter, not a shrunken texture
-const SMOL = [
-  "................",
-  "................",
-  "................",
-  "................",
-  "................",
-  "................",
-  "......DDDD......",
-  ".....DBBBBD.....",
-  "....DBBBBBBD....",
-  "...DBBBBBBBBD...",
-  "...DBBBBBBBBD...",
-  "...DBBBBBBBBD...",
-  "....DBBBBBBD....",
-  ".....DDDDDD.....",
-  "................",
-  "................",
-];
-
-// Evolution is a different critter per stage, not a recolor: face geometry and
-// accessory anchors move with the body. `top` = grid row of the head's crown.
-const LAYOUTS = {
-  hatchling: { grid: SMOL, top: 6, eyeXL: 6, eyeXR: 9, eyeY: 9, eyeH: 1, mouthY: 11, blushXL: 4, blushXR: 11, blushY: 10, scarfY: 11, feetXL: 6, feetXR: 9 },
-  default:   { grid: BLOB, top: 2, eyeXL: 5, eyeXR: 10, eyeY: 6, eyeH: 2, mouthY: 10, blushXL: 3, blushXR: 12, blushY: 9, scarfY: 11, feetXL: 5, feetXR: 10 },
-};
+// Six spare rows above the grid: the tallest characters crown at row 0, the
+// wizard hat wants four rows above THAT, and the party bob lifts everything
+// two more. Without the headroom the hat clips straight off the canvas.
+const TOP = 6;
+const INK = "#2b2b2b";
 
 const px = (x, y, c) => { cx.fillStyle = c; cx.fillRect(x * PX, (y + TOP) * PX, PX, PX); };
 
-function drawGrid(grid, bodyColor, dy) {
+function drawGrid(grid, bodyColor, dy, extra) {
   for (let y = 0; y < 16; y++)
     for (let x = 0; x < 16; x++) {
       const ch = grid[y][x];
       if (ch === "B") px(x, y + dy, bodyColor);
-      else if (ch === "D") px(x, y + dy, "#2b2b2b");
+      else if (ch === "D") px(x, y + dy, INK);
+      else if (ch !== "." && extra && extra[ch]) px(x, y + dy, extra[ch]);
     }
 }
 
 let frame = 0;
+let lastMode = ""; // so the sleep motif plays at the moment of dozing off, once
 function render() {
   frame++;
   cx.clearRect(0, 0, cv.width, cv.height);
@@ -822,21 +1211,23 @@ function render() {
     else if (S.mood < 35) a = "sad";
     else a = "idle";
   }
+  if (a === "sleep" && lastMode !== "sleep") beep(SOUNDS.sleep);
+  lastMode = a;
 
   const bob =
     a === "party" ? (frame % 2 ? -2 : 0)
     : a === "walk" ? (frame % 2 ? -1 : 0) // brisker step than the idle bob
     : frame % 4 < 2 ? 0 : -1;
   const dy = a === "sleep" ? 1 : bob;
-  const L = LAYOUTS[st.name] || LAYOUTS.default;
-  const grid = st.name === "egg" ? EGG : L.grid;
-  drawGrid(grid, bodyColor(), dy);
+  const chr = CHARACTERS[S.custom.character] || CHARACTERS.blob;
+  const isEgg = st.name === "egg";
+  const L = isEgg ? null : chr.stages[st.name] || chr.stages.senior; // the wizard wears the senior body
+  drawGrid(isEgg ? EGG_GRID : L.grid, bodyColor(), dy, chr.colors);
 
-  if (st.name !== "egg") {
+  if (!isEgg) {
     // Where to look: a nearby cursor wins, then stroll direction, then the
     // occasional idle glance. HORIZONTAL only — vertical pupil shift dragged
-    // the eyes toward the mouth (and out of the senior's goggles) and made
-    // the whole face fall apart.
+    // the eyes toward the mouth and made the whole face fall apart.
     let lx = 0;
     if (a === "walk" && walking) {
       lx = walking;
@@ -850,62 +1241,58 @@ function render() {
 
     const ey = L.eyeY + dy;
 
-    // The senior's marker is little pointy ears — a silhouette change that
-    // stays OFF the face. (Goggles were tried; they wrecked the eyes.)
-    if (st.name === "senior") {
-      px(4, 0 + dy, "#2b2b2b"); px(4, 1 + dy, "#2b2b2b"); px(5, 1 + dy, "#2b2b2b");
-      px(11, 0 + dy, "#2b2b2b"); px(11, 1 + dy, "#2b2b2b"); px(10, 1 + dy, "#2b2b2b");
-    }
-
     // eyes — the classic format: 2px tall, 1px on blink, nothing fancier
-    if (a === "sleep") { px(L.eyeXL, ey, "#2b2b2b"); px(L.eyeXL + 1, ey, "#2b2b2b"); px(L.eyeXR - 1, ey, "#2b2b2b"); px(L.eyeXR, ey, "#2b2b2b"); }
-    else if (a === "sad") { px(L.eyeXL, ey + 1, "#2b2b2b"); px(L.eyeXR, ey + 1, "#2b2b2b"); }
-    else if (frame % 24 === 0) { px(L.eyeXL, ey, "#2b2b2b"); px(L.eyeXR, ey, "#2b2b2b"); } // blink
+    if (a === "sleep") { px(L.eyeXL, ey, INK); px(L.eyeXL + 1, ey, INK); px(L.eyeXR - 1, ey, INK); px(L.eyeXR, ey, INK); }
+    else if (a === "sad") { px(L.eyeXL, ey + 1, INK); px(L.eyeXR, ey + 1, INK); }
+    else if (frame % 24 === 0) { px(L.eyeXL, ey, INK); px(L.eyeXR, ey, INK); } // blink
     else {
       for (let i = 0; i < L.eyeH; i++) {
-        px(L.eyeXL + lx, ey + i, "#2b2b2b");
-        px(L.eyeXR + lx, ey + i, "#2b2b2b");
+        px(L.eyeXL + lx, ey + i, INK);
+        px(L.eyeXR + lx, ey + i, INK);
       }
     }
 
-    // mouth
+    // mouth, around the stage's centre columns — a goose's mouth IS its beak
+    const mc = chr.mouthColor || INK;
+    const mx = L.cx;
     const my = L.mouthY + dy;
-    if (a === "eat") { if (frame % 2) { px(7, my, "#2b2b2b"); px(8, my, "#2b2b2b"); px(7, my - 1, "#2b2b2b"); px(8, my - 1, "#2b2b2b"); } else { px(7, my, "#2b2b2b"); px(8, my, "#2b2b2b"); } }
-    else if (a === "party" || a === "love") { px(6, my - 1, "#2b2b2b"); px(7, my, "#2b2b2b"); px(8, my, "#2b2b2b"); px(9, my - 1, "#2b2b2b"); }
-    else if (a === "sad" || a === "hungry") { px(7, my, "#2b2b2b"); px(8, my, "#2b2b2b"); px(6, my + 1, "#2b2b2b"); px(9, my + 1, "#2b2b2b"); }
-    else { px(7, my, "#2b2b2b"); px(8, my, "#2b2b2b"); }
+    if (a === "eat") { if (frame % 2) { px(mx, my, mc); px(mx + 1, my, mc); px(mx, my - 1, mc); px(mx + 1, my - 1, mc); } else { px(mx, my, mc); px(mx + 1, my, mc); } }
+    else if (a === "party" || a === "love") { px(mx - 1, my - 1, mc); px(mx, my, mc); px(mx + 1, my, mc); px(mx + 2, my - 1, mc); }
+    else if (a === "sad" || a === "hungry") { px(mx, my, mc); px(mx + 1, my, mc); px(mx - 1, my + 1, mc); px(mx + 2, my + 1, mc); }
+    else { px(mx, my, mc); px(mx + 1, my, mc); if (chr.bill) { px(mx - 1, my, mc); px(mx + 2, my, mc); } }
 
     // blush when happy
     if (a === "party" || a === "love" || S.mood > 80) { px(L.blushXL, L.blushY + dy, "#f48fb1"); px(L.blushXR, L.blushY + dy, "#f48fb1"); }
   } else if (frame % 8 < 2) {
     // egg wiggles occasionally: crack pixel
-    px(8, 5, "#2b2b2b");
+    px(8, 5, INK);
   }
 
-  // wizard hat — tapers up from a brim that rests on the crown (grid row 2)
+  // wizard hat — anchored to the crown and centre of whoever's wearing it
   if (st.name === "wizard") {
     const H = "#4a148c";
-    px(7, -2 + dy, H); px(8, -2 + dy, H);
-    for (let x = 6; x <= 9; x++) px(x, -1 + dy, H);
-    for (let x = 5; x <= 10; x++) px(x, 0 + dy, H);
-    for (let x = 4; x <= 11; x++) px(x, 1 + dy, H); // brim, resting on the crown
-    px(7, 0 + dy, "#ffd54f"); // gem, set into the hat rather than floating beside it
+    const t = L.top;
+    px(L.cx, t - 4 + dy, H); px(L.cx + 1, t - 4 + dy, H);
+    for (let x = L.cx - 1; x <= L.cx + 2; x++) px(x, t - 3 + dy, H);
+    for (let x = L.cx - 2; x <= L.cx + 3; x++) px(x, t - 2 + dy, H);
+    for (let x = L.cx - 3; x <= L.cx + 4; x++) px(x, t - 1 + dy, H); // brim, resting on the crown
+    px(L.cx, t - 2 + dy, "#ffd54f"); // gem, set into the hat rather than floating beside it
   }
 
   // accessories (settings) — anchored to the stage's layout, drawn after the
   // hat so the layering is stable
-  const acc = st.name === "egg" ? "none" : S.custom.accessory;
+  const acc = isEgg ? "none" : S.custom.accessory;
   if (acc === "bow") {
     // side bow on the crown; on a wizard it reads as pinned to the brim
     const bx = L.blushXL;
     px(bx, L.top - 1 + dy, "#f06292"); px(bx + 1, L.top - 1 + dy, "#f06292");
     px(bx, L.top + dy, "#f06292"); px(bx + 1, L.top + dy, "#c2185b"); // knot
   } else if (acc === "scarf") {
-    for (let x = L.blushXL; x <= L.blushXR; x++) px(x, L.scarfY + dy, "#e53935");
-    px(L.blushXL + 1, L.scarfY + 1 + dy, "#e53935"); px(L.blushXL + 1, L.scarfY + 2 + dy, "#c62828"); // trailing end
+    for (let x = L.scarfXL; x <= L.scarfXR; x++) px(x, L.scarfY + dy, "#e53935");
+    px(L.scarfXL + 1, L.scarfY + 1 + dy, "#e53935"); px(L.scarfXL + 1, L.scarfY + 2 + dy, "#c62828"); // trailing end
   } else if (acc === "sprout" && st.name !== "wizard") { // the hat would bury it
-    px(7, L.top - 1 + dy, "#33691e"); // stem
-    px(6, L.top - 2 + dy, "#66bb6a"); px(7, L.top - 2 + dy, "#66bb6a"); px(8, L.top - 2 + dy, "#9ccc65"); // leaves
+    px(L.cx, L.top - 1 + dy, "#33691e"); // stem
+    px(L.cx - 1, L.top - 2 + dy, "#66bb6a"); px(L.cx, L.top - 2 + dy, "#66bb6a"); px(L.cx + 1, L.top - 2 + dy, "#9ccc65"); // leaves
   }
 
   // confetti while partying — pinned to the outer columns, which the blob never
@@ -924,11 +1311,11 @@ function render() {
     }
   }
 
-  // stubby alternating feet while strolling
-  if (a === "walk") {
+  // stubby alternating feet while strolling (orange webbed ones on a goose)
+  if (a === "walk" && L) {
     const f = frame % 2;
-    px(L.feetXL + f, 14 + dy, "#2b2b2b");
-    px(L.feetXR - f, 14 + dy, "#2b2b2b");
+    px(L.feetXL + f, 14 + dy, chr.feetColor || INK);
+    px(L.feetXR - f, 14 + dy, chr.feetColor || INK);
   }
 
   // zzz

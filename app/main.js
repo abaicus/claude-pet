@@ -20,6 +20,9 @@ const HOOK_EVENTS = [
   "UserPromptSubmit",
   "PostToolUse",
   "PostToolUseFailure",
+  "Notification", // Claude is waiting on the human — the pet passes it on
+  "SubagentStop",
+  "PreCompact",
   "Stop",
   "SessionEnd",
 ];
@@ -79,6 +82,9 @@ function done() {
     };
     if (typeof ti.command === "string") rec.command = head(ti.command);
     if (o.reason) rec.reason = str(o.reason);
+    // Notification carries its human-readable line ("Claude needs your
+    // permission to use Bash") — that's the pet's cue to wave at you.
+    if (o.message) rec.message = head(o.message);
     // Only Bash output is worth carrying (test runs); file writes would just bloat the log.
     if (rec.tool_name === "Bash") rec.output = tail(flatten(o.tool_response));
     if (o.error != null) rec.error = tail(flatten(o.error));
@@ -530,7 +536,7 @@ function openSettings() {
     return;
   }
   const W = 292;
-  const H = 524; // just the card + its shadow — a frameless window's transparent slack still eats clicks
+  const H = 528; // just the card + its shadow — a frameless window's transparent slack still eats clicks
   const [px, py] = win.getPosition();
   const [pw] = win.getSize();
   const pos = clampToDisplay(px + Math.round(pw / 2 - W / 2), py - 40, W, H);

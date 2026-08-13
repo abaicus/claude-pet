@@ -56,10 +56,12 @@ running Claude Code has Node already.
   quit* (surgically removes only claude-pet's entries from settings.json), or
   quit keeping hooks.
 - **Settings…** opens a little retro panel with everything else: name your
-  pet, pick one of six color palettes, dress it (accessories unlock as it
-  levels), size slider (70–200%, resizes live from the pet's feet) with a
-  reset-size-&-position button, toggles for the speech bubble / stats line /
-  background glow, and level-up sounds with a volume slider.
+  pet, pick its species — blob, goose, cat, gerbil, or dog, all hatching from
+  the same egg and evolving through the same stages — pick one of six color
+  palettes, dress it (accessories unlock as it levels), size slider (70–200%,
+  resizes live from the pet's feet) with a reset-size-&-position button,
+  toggles for the speech bubble / stats line / glow, and sounds (every action
+  has a tiny chiptune motif, off by default) with a volume slider.
 - **⌘⌥P** toggles click-through globally — you need it, because once
   click-through is on, the right-click that would turn it off passes straight
   through the pet.
@@ -79,14 +81,22 @@ Runs against a throwaway `$HOME`, so it can never touch your real
 |---|---|
 | Edit/Write succeeds | eats (hunger down, +xp) |
 | `git commit` in Bash | party animation, big xp |
+| `git push` | party, "pushed to the cloud ☁" |
+| npm/pnpm/yarn install | munches on the dependencies |
 | Test run, all green | party, +20 xp, "27 tests green ✓" |
 | Test run, red | sulks, "3 tests red..." |
 | Other tool failure | sulks, mood drops |
+| **Claude waits for your input** | relays it: "☝ Claude needs your permission to use Bash" |
+| Context compaction | "compacting memories..." |
+| A subagent finishes | "a minion returns ✓" |
 | Session starts | wakes up and greets you |
 | Idle 30+ min | lonely, but energy recovers |
 | Low energy | sleeps |
-| XP thresholds | egg → hatchling → junior → senior (ears) → wizard (hat) — each stage is its own sprite |
+| XP thresholds | egg → hatchling → junior → senior → wizard (hat) — every character has its own sprite per stage |
 | Context ~75% / ~90% full | warns you: "⚠ context ~91% in myproject — /compact soon!" |
+
+Web searches, agent spawns, and file reads get occasional asides too, at
+deliberately low odds — the pet comments on your work, it doesn't narrate it.
 
 ## It knows what you're working on
 
@@ -120,8 +130,9 @@ it to start with the OS.
 
 ## Extending
 
-- **Sprites**: pet is procedurally drawn on a 16×16 grid in `index.html` —
-  swap `drawGrid` for real spritesheets.
+- **Sprites**: every character × stage is a 16×16 ASCII grid in the
+  `CHARACTERS` table in `index.html` — adding a species is ~3 grids plus face
+  coordinates, and the test suite checks the geometry for you.
 - **Team mode**: POST stats on SessionEnd to a shared endpoint; render the
   whole team's pets on one wall.
 - **Log rotation**: `events.jsonl` grows forever; truncation is handled

@@ -90,6 +90,13 @@ test("registers PostToolUseFailure (the event the pet sulks on)", () => {
   assert.ok(readSettings().hooks.PostToolUseFailure);
 });
 
+test("registers the chatty events: Notification, SubagentStop, PreCompact", () => {
+  for (const ev of ["Notification", "SubagentStop", "PreCompact"]) {
+    assert.ok(pet.HOOK_EVENTS.includes(ev), ev + " missing from HOOK_EVENTS");
+    assert.ok(readSettings().hooks[ev], ev + " not installed");
+  }
+});
+
 test("tool events get a matcher, non-tool events do not", () => {
   const s = readSettings();
   assert.strictEqual(s.hooks.PostToolUse[0].matcher, "*");
@@ -126,7 +133,8 @@ test("preserves user hooks, user hook groups, and unrelated settings keys", () =
     hooks: {
       Stop: [{ hooks: [{ type: "command", command: "afplay /System/Library/Sounds/Glass.aiff", async: true }] }],
       PostToolUse: [{ matcher: "Edit|Write", hooks: [{ type: "command", command: "./lint.sh", timeout: 3 }] }],
-      Notification: [{ hooks: [{ type: "command", command: "./notify.sh" }] }],
+      // an event claude-pet does not register for must stay untouched
+      PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "./guard.sh" }] }],
     },
   });
   pet.installHooks();
@@ -136,7 +144,7 @@ test("preserves user hooks, user hook groups, and unrelated settings keys", () =
   assert.strictEqual(userHooks(s).length, 3, "user hooks lost");
   assert.strictEqual(s.hooks.PostToolUse[0].matcher, "Edit|Write", "user matcher mangled");
   assert.strictEqual(s.hooks.PostToolUse[0].hooks[0].timeout, 3, "user timeout mangled");
-  assert.strictEqual(s.hooks.Notification.length, 1, "untouched event modified");
+  assert.strictEqual(s.hooks.PreToolUse.length, 1, "untouched event modified");
   assert.strictEqual(ourHooks(s).length, pet.HOOK_EVENTS.length);
 });
 
@@ -340,6 +348,15 @@ test("carries transcript_path so the app can read usage (the hook never does)", 
   assert.strictEqual(r.records[0].transcript_path, "/tmp/x/tr.jsonl");
 });
 
+test("carries the Notification message (the pet's cue to wave at you)", () => {
+  const r = runHook({
+    hook_event_name: "Notification",
+    session_id: "s",
+    message: "Claude needs your permission to use Bash",
+  });
+  assert.match(r.records[0].message, /needs your permission/);
+});
+
 test("is fast enough to sit in front of every tool call", () => {
   const r = runHook({ hook_event_name: "Stop" });
   assert.ok(r.ms < 1000, "took " + r.ms + "ms");
@@ -505,7 +522,7 @@ test("formats tokens and model names the way a pixel bubble wants them", () => {
 const C_START = "/* ---------- customization ---------- */";
 const custBlock = html.slice(html.indexOf(C_START), html.indexOf("const IDLE_MS"));
 assert.ok(custBlock.includes("PALETTES"), "could not lift the customization block from index.html");
-const cust = new Function("S", custBlock + "\nreturn { PALETTES, ACCESSORIES, CUSTOM_DEFAULTS };")({});
+const cust = new Function("S", custBlock + "\nreturn { PALETTES, ACCESSORIES, CUSTOM_DEFAULTS, CHARACTERS, EGG_GRID };")({});
 
 test("every palette is a 4-step ramp of hex colors (stages 1-4)", () => {
   for (const [id, ramp] of Object.entries(cust.PALETTES)) {
@@ -522,11 +539,75 @@ test("accessories: unique ids, 'none' is free, every lock is reachable", () => {
   for (const a of cust.ACCESSORIES) assert.ok(a.lv >= 0 && a.lv <= 4, a.id + " is locked past wizard");
 });
 
+test("the whole cast is present and every character hatches and levels up", () => {
+  for (const want of ["blob", "goose", "cat", "gerbil", "dog"])
+    assert.ok(cust.CHARACTERS[want], "missing character: " + want);
+  assert.ok(cust.CHARACTERS[cust.CUSTOM_DEFAULTS.character], "default character does not exist");
+  for (const [id, ch] of Object.entries(cust.CHARACTERS)) {
+    for (const stage of ["hatchling", "junior", "senior"])
+      assert.ok(ch.stages[stage], id + " cannot be a " + stage);
+  }
+});
+
+const wellFormed = (grid, who) => {
+  assert.strictEqual(grid.length, 16, who + ": not 16 rows");
+  for (const row of grid) {
+    assert.strictEqual(row.length, 16, who + ": bad row width: " + row);
+    assert.ok(/^[.DBW]+$/.test(row), who + ": unexpected char in: " + row);
+  }
+};
+
+test("every stage grid is a well-formed 16x16 of known pixels", () => {
+  wellFormed(cust.EGG_GRID, "egg");
+  for (const [id, ch] of Object.entries(cust.CHARACTERS))
+    for (const [stage, L] of Object.entries(ch.stages)) wellFormed(L.grid, id + "/" + stage);
+});
+
+test("eyes and mouth always land on the body — including ±1 eye tracking", () => {
+  // A per-stage geometry slip is exactly how the feature dies silently for
+  // one stage while looking fine on every other (it happened once).
+  for (const [id, ch] of Object.entries(cust.CHARACTERS)) {
+    for (const [stage, L] of Object.entries(ch.stages)) {
+      const who = id + "/" + stage;
+      const on = (x, y) => "BW".includes(L.grid[y][x]);
+      for (let lx = -1; lx <= 1; lx++)
+        for (let i = 0; i < L.eyeH; i++) {
+          assert.ok(on(L.eyeXL + lx, L.eyeY + i), who + ": left eye off-body at lx=" + lx);
+          assert.ok(on(L.eyeXR + lx, L.eyeY + i), who + ": right eye off-body at lx=" + lx);
+        }
+      assert.ok(L.eyeH === 1 || L.eyeH === 2, who + ": eyes must be 1-2px tall");
+      assert.ok(on(L.cx, L.mouthY) && on(L.cx + 1, L.mouthY), who + ": mouth off-body");
+      assert.ok(L.top >= 0, who + ": crown above the grid");
+    }
+  }
+});
+
+test("the blob's senior 'horns' are gone (no per-stage marker draws in render)", () => {
+  assert.ok(!html.includes('st.name === "senior"'), "a senior-only draw crept back into render()");
+});
+
+test("every action has a sound: a tiny square-wave motif of [freq, dur] pairs", () => {
+  const si = html.indexOf("const SOUNDS");
+  const SOUNDS = new Function(html.slice(si, html.indexOf("};", si) + 2) + "\nreturn SOUNDS;")();
+  for (const key of ["levelup", "green", "commit", "red", "eat", "pet", "treat", "wake", "sleep", "sad", "notify", "warn", "gossip", "transform"]) {
+    assert.ok(Array.isArray(SOUNDS[key]) && SOUNDS[key].length, "no sound for " + key);
+    for (const [freq, dur] of SOUNDS[key]) {
+      assert.ok(freq > 100 && freq < 4000, key + " has a silly frequency: " + freq);
+      assert.ok(dur > 0 && dur <= 0.5, key + " has a silly duration: " + dur);
+    }
+  }
+});
+
+test("the renderer reacts to the chatty events too", () => {
+  for (const needle of ['"Notification"', '"PreCompact"', '"SubagentStop"', "git\\s+push", "QUIPS.deps"])
+    assert.ok(html.includes(needle), "index.html does not react to " + needle);
+});
+
 test("interaction & settings wiring is present in all three sources", () => {
   for (const needle of ["dblclick", "pet-wander", "pet-cursor", "pet-walk", "pet-custom-set", "PET_COOLDOWN", "TREAT_COOLDOWN"])
     assert.ok(html.includes(needle), "index.html missing " + needle);
   const settingsSrc = fs.readFileSync(path.join(__dirname, "..", "settings.html"), "utf8");
-  for (const needle of ["pet-state-get", "custom-set", "settings-close", "showGlow", "pet-scale", "pet-reset-window"])
+  for (const needle of ["pet-state-get", "custom-set", "settings-close", "showGlow", "pet-scale", "pet-reset-window", "characters"])
     assert.ok(settingsSrc.includes(needle), "settings.html missing " + needle);
   const mainSrc = fs.readFileSync(path.join(__dirname, "..", "main.js"), "utf8");
   for (const needle of ["pet-custom-set", "pet-wander", "pet-cursor", "settings.html", "transcript_path", "pet-reset-window", "pet-scale-set"])

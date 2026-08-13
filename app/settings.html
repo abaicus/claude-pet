@@ -108,6 +108,11 @@
   </div>
 
   <div class="section">
+    <div class="label">CHARACTER</div>
+    <div id="characters"></div>
+  </div>
+
+  <div class="section">
     <div class="label">PALETTE</div>
     <div id="palettes"></div>
   </div>
@@ -132,7 +137,7 @@
 
   <div class="section">
     <div class="label">SOUND</div>
-    <label class="row"><input id="sound" type="checkbox" /> level-up sounds</label>
+    <label class="row"><input id="sound" type="checkbox" /> sounds</label>
     <div class="row">vol <input id="volume" type="range" min="0" max="100" step="5" /><span id="volPct"></span></div>
   </div>
 
@@ -154,6 +159,16 @@ function render() {
   const c = st.custom;
 
   if (document.activeElement !== $("name")) $("name").value = c.name || "";
+
+  const chars = $("characters");
+  chars.innerHTML = "";
+  for (const ch of st.characters || []) {
+    const b = document.createElement("button");
+    b.className = "chip" + (c.character === ch.id ? " on" : "");
+    b.textContent = ch.label;
+    b.onclick = () => set({ character: ch.id });
+    chars.appendChild(b);
+  }
 
   const pal = $("palettes");
   pal.innerHTML = "";

@@ -46,7 +46,7 @@ Electron app — transparent, frameless, always-on-top, draggable
 
 ## What's verified
 
-`npm test` — 42 checks, all green:
+`npm test` — 50 checks, all green:
 
 - Installer: idempotent double-install, preserves user hooks/groups/matchers
   and unrelated settings keys, backs up, refuses invalid JSON leaving the file
@@ -62,6 +62,15 @@ Electron app — transparent, frameless, always-on-top, draggable
   tracking, token formatting — lifted from index.html like the test parser
 - Customization tables: every palette a 4-ramp of valid hex, accessory locks
   reachable, IPC wiring present in all three sources, bubble bottom-anchored
+- Characters: all five present with hatchling/junior/senior stages, every grid
+  a well-formed 16×16 of known pixels, and **eyes/mouth land on the body for
+  every stage at every ±1 tracking offset** (a per-stage geometry slip is
+  exactly how eye tracking died silently once). Horns-regression: no
+  `st.name === "senior"` special-case draw may reappear in render()
+- Sounds: every action key present, each motif sane [freq, dur] pairs
+- New hook events registered (Notification/SubagentStop/PreCompact), the
+  Notification `message` carried through the hook, and the untouched-event
+  test now uses PreToolUse (the one event we deliberately don't register)
 
 Verified by actually running it on macOS (screenshots via `CLAUDE_PET_SHOT`):
 
@@ -122,25 +131,45 @@ Verified by actually running it on macOS (screenshots via `CLAUDE_PET_SHOT`):
 - Red test run → sulk, mood −10, "3 tests red..."
 - Other PostToolUseFailure → sulk, mood −8
 - SessionStart → wake + greet; Stop → small xp; SessionEnd → energy +20
+- More Bash flavor: `git push` → party "pushed to the cloud ☁" (+10 xp),
+  npm/pnpm/yarn/bun install → eat + deps quip, `git checkout -b` → branch quip
+- Quieter tools whisper occasionally: WebSearch/WebFetch (20%), Task (35%),
+  Read/Grep/Glob (6%) — probabilities deliberately low, spam kills the charm
+- **Notification** → the pet relays the actual message ("☝ Claude needs your
+  permission to use Bash") as an important bubble + notify chime. This is the
+  headline trick: the pet taps you on the shoulder when Claude is blocked.
+- PreCompact → "compacting memories..."; SubagentStop → +3 xp, minion quip 30%
 - Passive: hunger creeps up, energy recovers when idle, lonely after 30 min
 - Energy drains −1/tool call and recovers +2.5/20s once you've been idle a
   minute (+0.3 otherwise). **Sleep needs low energy AND a minute of quiet** —
   gating on energy alone made the pet doze through every busy session, which
   is precisely when it should be lively.
+- **Characters** (`S.custom.character`): blob, goose, cat, gerbil, dog. All
+  hatch from the SAME egg and evolve through the same xp ladder; each
+  character × stage is its own 16×16 grid + face layout in the `CHARACTERS`
+  table (grid letters: `.` empty, `D` outline, `B` body/palette, `W` white
+  patch; char-level extras: `mouthColor`+`bill` make the goose's mouth a wide
+  orange beak, `feetColor` its walking feet). The wizard stage reuses the
+  senior grid — the hat marks it, anchored to each layout's `top`/`cx`.
 - Evolution by xp: egg(0) → hatchling(50) → junior(250) → senior(1000) →
-  wizard(3000). Each stage LOOKS different, not recolored: egg grid, small
-  SMOL grid for hatchling, full blob for junior, pointy ears for senior, hat
-  for wizard. Stage markers must stay OFF the face — senior goggles were
-  tried and wrecked the eyes (rims read as extra eyes the moment pupils
-  shifted). Face/accessory geometry lives in `LAYOUTS` (per-stage anchors) —
-  add stages there, not with magic row numbers in render().
+  wizard(3000). Each stage LOOKS different, not recolored — bigger body,
+  longer ears, taller neck. Stage markers stay OFF the face and IN the
+  silhouette: senior goggles wrecked the eyes, and the blob's dark senior
+  ear-nubs read as "horns, wtf" (user). Identity lives in the character now;
+  the blob just gets taller. Add stages/characters in `CHARACTERS`, never
+  with magic row numbers in render(). The geometry test enforces eyes/mouth
+  on-body for every stage at every tracking offset.
 - Customization (persisted in `S.custom` in state.json): name (stats line),
-  palette (6 × 4-color ramps, one color per stage 1-4 so evolution still
-  reads as growth; egg ignores it), accessory (bow lv1 / sprout lv2 / scarf
-  lv3 — gates enforced in the renderer, not just greyed in the UI), bubble/
-  stats/glow visibility, sound volume (0 = mute, 60 ≈ old fixed level)
-- Level-up/commit/test sounds: synthesized square waves, **off by default**,
-  toggled from the right-click menu, persisted in state.json
+  character, palette (6 × 4-color ramps, one color per stage 1-4 so evolution
+  still reads as growth; egg ignores it), accessory (bow lv1 / sprout lv2 /
+  scarf lv3 — gates enforced in the renderer, not just greyed in the UI),
+  bubble/stats/glow visibility, sound volume (0 = mute, 60 ≈ old fixed level)
+- Sounds for ALL actions: level-up/commit/green/red plus eat (throttled to
+  one blip per 8s — edits arrive in bursts), pet, treat, wake, sleep (fires
+  once on the doze-off transition, tracked via lastMode in render), sad,
+  notify, warn, gossip, transform. Synthesized square waves, **off by
+  default**, toggled from settings, persisted in state.json. Keep new sounds
+  SHORT and throttle anything tied to a high-frequency event.
 - State + event-log byte offset persist in `~/.claude-pet/state.json`
 - Window position and scale persist in `~/.claude-pet/window.json`, kept
   separate on purpose: the renderer writes state.json constantly, so a second
@@ -200,7 +229,8 @@ Verified by actually running it on macOS (screenshots via `CLAUDE_PET_SHOT`):
 
 Done: 1–4, plus (unnumbered): interactivity (petting/treats/eyes/wander),
 customization + settings window, session awareness/context warnings, visual
-evolution ladder, glow, bubble reposition.
+evolution ladder, glow, bubble reposition, characters (goose/cat/gerbil/dog),
+sounds for all actions, Notification/PreCompact/SubagentStop reactions.
 
 1. ~~Run it, fix anything platform-specific~~ — see "Platform notes" below
 2. ~~Test-run awareness~~ — `isTestCmd`/`parseTests` in index.html
@@ -224,14 +254,20 @@ evolution ladder, glow, bubble reposition.
   shell and bakes an absolute path in. Install repairs it if node later moves.
 - **`PostToolUseFailure` is real** and now registered (it was missing from
   `HOOK_EVENTS` while the renderer already handled it). Tool events take a
-  `matcher`; non-tool events must not have one.
+  `matcher`; non-tool events must not have one. Also registered: Notification
+  (its `message` rides along in the hook record — the pet's cue to wave),
+  SubagentStop, PreCompact. PreToolUse is deliberately NOT registered (it
+  would double event volume for nothing) — tests use it as the untouched
+  user event.
 - Hooks are installed with `"async": true` — Claude Code doesn't wait on them
   at all. This is invariant 1 enforced at the config level; keep it.
 - The hook trims payloads before writing. Full `tool_response` bodies made the
   log grow ~14 KB per event; records are now a few hundred bytes.
 - Rendering gotchas already paid for: an abspos bubble at `left:50%` needs
   `width:max-content` or it shrinks to the window edge and clips; the canvas
-  needs `TOP` headroom or the bob clips the wizard hat off the top.
+  needs `TOP` headroom or the bob clips the wizard hat off the top. TOP is
+  now **6** (canvas 160×220): tall characters crown at grid row 0, the hat
+  wants 4 rows above that, and the party bob 2 more. Don't shrink it.
 
 ## Dev helpers
 
