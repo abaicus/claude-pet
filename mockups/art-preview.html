@@ -58,12 +58,12 @@ function cell(parent, label, drawOpts, scale = 1) {
   wrap.className = 'cell';
   const c = document.createElement('canvas');
   const dpr = window.devicePixelRatio || 1;
-  const w = 130 * scale, h = 140 * scale;
+  const w = 150 * scale, h = 200 * scale;   // the pixel sprites are bigger than the old vector ones
   c.width = w * dpr; c.height = h * dpr;
   c.style.width = w + 'px'; c.style.height = h + 'px';
   const ctx = c.getContext('2d');
   ctx.scale(dpr * scale, dpr * scale);
-  ctx.translate(65, 6);
+  ctx.translate(75, 58);
   PetArt.drawPet(ctx, Object.assign({ t: 700, glow: true, mood: 'happy' }, drawOpts));
   const span = document.createElement('span');
   span.textContent = label;

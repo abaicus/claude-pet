@@ -66,8 +66,10 @@ function consume(s) {
     bubbleEl.textContent = s.bubble.text;
     bubbleEl.classList.toggle('important', !!s.bubble.important);
     bubbleEl.classList.add('show');
+    bubbleZone.classList.toggle('important', !!s.bubble.important);
+    bubbleZone.classList.add('show');
   }
-  if (!s.bubble) bubbleEl.classList.remove('show');
+  if (!s.bubble) { bubbleEl.classList.remove('show'); bubbleZone.classList.remove('show'); }
 
   // stats line
   const line = s.statsLine || { mode: 'hidden' };
@@ -289,19 +291,19 @@ function drawOverlays(t, motion, scale, cx, feetY, dt) {
     if (p.type === 'confetti') p.vy += 160 * dt; // gravity
     const fade = 1 - p.age / p.life;
     ctx2d.globalAlpha = Math.max(0, Math.min(1, fade * 1.4));
+    // Everything here is drawn on the art grid too — a rotating confetti
+    // rectangle next to a pixel sprite looks like a bug.
+    const G = PetArt.PX;
+    const snap = (v) => Math.round(v / G) * G;
     if (p.type === 'confetti') {
-      ctx2d.save();
-      ctx2d.translate(p.x, p.y);
-      ctx2d.rotate(p.spin + p.age * 6);
       ctx2d.fillStyle = p.color;
-      ctx2d.fillRect(-2.4, -1.4, 4.8, 2.8);
-      ctx2d.restore();
+      ctx2d.fillRect(snap(p.x), snap(p.y), G, G);
     } else if (p.type === 'heart') {
-      drawHeart(p.x, p.y, 4.4, '#ff6f91');
+      drawPixelHeart(snap(p.x), snap(p.y), G, '#ff6f91');
     } else if (p.type === 'zzz') {
-      ctx2d.fillStyle = 'rgba(150,160,200,0.9)';
-      ctx2d.font = `${7 + p.age * 3}px -apple-system, sans-serif`;
-      ctx2d.fillText('z', p.x, p.y);
+      ctx2d.fillStyle = 'rgba(150,160,200,0.95)';
+      ctx2d.font = `bold ${Math.round(9 + p.age * 3)}px ui-monospace, Menlo, monospace`;
+      ctx2d.fillText('z', snap(p.x), snap(p.y));
     }
   }
   ctx2d.globalAlpha = 1;
@@ -330,13 +332,15 @@ function drawOverlays(t, motion, scale, cx, feetY, dt) {
   ctx2d.restore();
 }
 
-function drawHeart(x, y, r, color) {
+// A 5x5 pixel heart, one cell per art pixel.
+const HEART = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
+function drawPixelHeart(x, y, g, color) {
   ctx2d.fillStyle = color;
-  ctx2d.beginPath();
-  ctx2d.moveTo(x, y + r * 0.9);
-  ctx2d.bezierCurveTo(x - r * 1.4, y - r * 0.3, x - r * 0.6, y - r * 1.2, x, y - r * 0.4);
-  ctx2d.bezierCurveTo(x + r * 0.6, y - r * 1.2, x + r * 1.4, y - r * 0.3, x, y + r * 0.9);
-  ctx2d.fill();
+  for (let r = 0; r < HEART.length; r++) {
+    for (let c = 0; c < HEART[r].length; c++) {
+      if (HEART[r][c] === 'X') ctx2d.fillRect(x + (c - 3) * g, y + (r - 3) * g, g + 0.5, g + 0.5);
+    }
+  }
 }
 
 // ------------------------------------------------------------------ input

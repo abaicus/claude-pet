@@ -45,8 +45,11 @@ the hook script is fire-and-forget and can never block or fail a session.
   and debug sections (set level/stats, fire fake events through the real
   reducer, trigger any animation or sound). `esc` or `✕` closes it.
 
-The pet levels 0–10 through five forms (egg → hatchling → junior → senior →
-elder) on xp from commits, green tests, PRs, deploys and edits. It parses
+Every sprite is pixel art drawn on an integer grid at runtime — no image
+files. The silhouette's per-row half-width table places the face, ears and
+every accessory, so nothing floats off the body; the palette hues the whole
+creature. The pet levels 0–10 through five forms (egg → hatchling → junior →
+senior → elder) on xp from commits, green tests, PRs, deploys and edits. It parses
 what bash commands *mean* — commits party, red tests sulk with the failure
 count, `rm -rf` gets a flinch. Context warnings fire once at ~75% and ~90%
 per session and re-arm below 60%.

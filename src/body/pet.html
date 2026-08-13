@@ -24,7 +24,12 @@
      pixel language the whole app speaks. No soft shadows, no easing curves. */
   #bubble {
     position: relative; /* the tail anchors to the bubble, not the zone */
-    max-width: 100%;
+    /* width:max-content is load-bearing — a flex item otherwise stretches to
+       the zone and a three-word quip becomes a full-width banner. */
+    width: max-content;
+    max-width: min(200px, 100%);
+    max-height: 3.4em;
+    overflow: hidden;
     background: #fffef2;
     color: #2b2b2b;
     border: 3px solid #2b2b2b;
@@ -44,37 +49,45 @@
     font-weight: 700;
     box-shadow: 3px 3px 0 #2b2b2b, 0 0 0 1px #2b2b2b;
   }
-  /* a two-block pixel tail, drawn under the bubble's bottom border */
-  #bubble::after {
+  /* The pixel tail hangs off the ZONE, not the bubble: the bubble clips its
+     own overflow for the 3-line clamp and would cut the tail off. The zone is
+     bottom-anchored to the bubble, so they stay together. */
+  #bubble-zone::after {
     content: ""; position: absolute; left: 50%; margin-left: -5px; bottom: -9px;
     width: 10px; height: 6px;
     background: #fffef2;
     border: 3px solid #2b2b2b; border-top: 0;
     box-shadow: 3px 3px 0 #2b2b2b;
+    opacity: 0; transition: opacity 150ms steps(3);
   }
-  #bubble.important::after { background: #ffd76e; }
+  #bubble-zone.show::after { opacity: 1; }
+  #bubble-zone.important::after { background: #ffd76e; }
 
   /* Stats line: real telemetry in text; fiction lives in body language */
   #stats-zone {
-    position: absolute; left: 0; right: 0; bottom: 4px;
-    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    position: absolute; left: 0; right: 0; bottom: 6px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
     pointer-events: none;
   }
-  /* Cream text in a hard black outline — legible on any wallpaper without a
-     panel behind it, and it keeps the pixel language. */
+  /* A small pixel plate rather than floating text: same cream paper, hard
+     border and hard shadow as the speech bubble, so the two read as a set. */
   .pill {
-    color: #fffef2;
-    padding: 0 4px;
+    background: #fffef2;
+    color: #2b2b2b;
+    border: 2px solid #2b2b2b;
+    box-shadow: 2px 2px 0 #2b2b2b;
+    padding: 2px 6px 3px;
     font-family: "SF Mono", ui-monospace, Menlo, monospace;
-    font-size: 10px; letter-spacing: 0.6px;
+    font-size: 9.5px; letter-spacing: 0.3px;
     white-space: nowrap;
-    max-width: calc(100% - 10px);
+    max-width: calc(100% - 16px);
     overflow: hidden; text-overflow: ellipsis;
-    text-shadow:
-      1px 1px 0 #2b2b2b, -1px 1px 0 #2b2b2b, 1px -1px 0 #2b2b2b, -1px -1px 0 #2b2b2b,
-      0 2px 0 #2b2b2b, 0 -2px 0 #2b2b2b, 2px 0 0 #2b2b2b, -2px 0 0 #2b2b2b;
   }
-  .pill.strip { font-size: 9px; opacity: 0.9; }
+  .pill.strip {
+    font-size: 8.5px; padding: 1px 5px 2px;
+    background: #ece9d8; color: rgba(43, 43, 43, 0.75);
+    box-shadow: 2px 2px 0 rgba(43, 43, 43, 0.55);
+  }
 </style>
 </head>
 <body>

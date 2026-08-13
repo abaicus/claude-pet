@@ -313,7 +313,7 @@ class Brain extends EventEmitter {
       }
       case 'setScale': {
         const v = Number(cmd.value);
-        if (!(v >= 0.5 && v <= 2)) { result = { ok: false, reason: 'scale out of range' }; break; }
+        if (!(v >= 1 && v <= 2.5)) { result = { ok: false, reason: 'scale out of range' }; break; }
         this.prefs.scale = v;
         break;
       }

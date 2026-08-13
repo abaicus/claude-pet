@@ -54,7 +54,7 @@ function defaultPrefs() {
     bubbles: true,
     statsLine: true,
     glow: true,
-    scale: 1,
+    scale: 1.5,           // the pixel sprite wants room; 1 is the floor
     soundOn: false,        // off by default — deliberate
     volume: 0.7,
     clickThrough: false,
@@ -64,7 +64,12 @@ function defaultPrefs() {
 
 function migratePrefs(prefs) {
   if (!prefs || typeof prefs !== 'object') return defaultPrefs();
-  return Object.assign(defaultPrefs(), prefs);
+  const out = Object.assign(defaultPrefs(), prefs);
+  // The scale floor moved from 0.5 to 1 when the art became pixel art —
+  // a pet saved below the floor must not render smaller than the slider can
+  // express, or the settings window would be lying about the size.
+  out.scale = Math.max(1, Math.min(2.5, Number(out.scale) || 1.5));
+  return out;
 }
 
 module.exports = { SCHEMA_VERSION, defaultState, resetState, migrate, defaultPrefs, migratePrefs };
