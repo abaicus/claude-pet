@@ -104,7 +104,9 @@ function createSettingsWindow() {
   // Frameless + transparent: the page draws its own card and titlebar, in the
   // same pixel language as the speech bubble.
   settingsWin = new BrowserWindow({
-    width: 480, height: 780, minWidth: 440, maxWidth: 640, minHeight: 320,
+    // Tall enough for the deepest tab (appearance, with the whole wardrobe
+    // laid out) without a scrollbar on a laptop screen; the rest scrolls.
+    width: 480, height: 700, minWidth: 440, maxWidth: 640, minHeight: 320,
     frame: false, transparent: true, hasShadow: false, resizable: true,
     title: 'claude-pet settings', fullscreenable: false, maximizable: false,
     webPreferences: {

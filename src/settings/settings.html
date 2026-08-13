@@ -51,6 +51,30 @@
   }
   #close:hover { background: var(--paper); color: var(--ink); }
 
+  /* ---- tabs ---- */
+  /* They hang off the titlebar and the selected one *is* the page below it:
+     same cream, no seam. Class specificity beats the generic button rules
+     further down, so the order of these blocks does not matter. */
+  #tabs {
+    flex: 0 0 auto;
+    display: flex; gap: 3px;
+    padding: 0 8px;
+    background: var(--ink);
+  }
+  .tab {
+    flex: 1;
+    border: 0; box-shadow: none; background: transparent;
+    color: rgba(255, 254, 242, 0.5);
+    padding: 9px 4px 8px;
+    font-size: 10px; letter-spacing: 2px;
+    cursor: pointer;
+  }
+  .tab:hover { background: rgba(255, 254, 242, 0.15); color: var(--paper); }
+  .tab:active { transform: none; box-shadow: none; }
+  .tab[aria-selected="true"],
+  .tab[aria-selected="true"]:hover { background: var(--paper); color: var(--ink); }
+  .panel[hidden] { display: none; }
+
   /* min-height:0 is load-bearing: without it a flex item refuses to shrink
      below its content, so the card outgrows its own border. */
   #scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
@@ -179,91 +203,103 @@
 <div id="card">
   <div id="titlebar"><span>CLAUDE-PET</span><span id="close">✕</span></div>
 
+  <div id="tabs" role="tablist" aria-label="settings sections">
+    <button class="tab" id="tab-settings" role="tab" data-panel="settings" aria-selected="true" aria-controls="panel-settings">SETTINGS</button>
+    <button class="tab" id="tab-appearance" role="tab" data-panel="appearance" aria-selected="false" aria-controls="panel-appearance">APPEARANCE</button>
+    <button class="tab" id="tab-debug" role="tab" data-panel="debug" aria-selected="false" aria-controls="panel-debug">DEBUG</button>
+  </div>
+
   <div id="scroll">
-    <div class="section">
-      <div class="label">NAME</div>
-      <input type="text" id="name" maxlength="12" spellcheck="false" placeholder="name me!">
-      <div class="note"><span id="level-label"></span></div>
-    </div>
+    <div class="panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings">
+      <div class="section">
+        <div class="label">NAME</div>
+        <input type="text" id="name" maxlength="12" spellcheck="false" placeholder="name me!">
+        <div class="note"><span id="level-label"></span></div>
+      </div>
 
-    <div class="section">
-      <div class="label">PALETTE</div>
-      <div class="swatches" id="palettes"></div>
-    </div>
+      <div class="section">
+        <div class="label">SOUND</div>
+        <div class="row"><label for="t-sound">chiptune sounds</label><input type="checkbox" id="t-sound"></div>
+        <div class="row"><span>vol</span><input type="range" id="volume" min="0" max="1" step="0.05"><span id="volume-label" class="val"></span></div>
+        <div class="note">synthesized in code — no audio files.<br>important notifications always chime, even muted.</div>
+      </div>
 
-    <div class="section">
-      <div class="label">ACCESSORY <em>one at a time, unlocked by level</em></div>
-      <div class="accs" id="accessories"></div>
-    </div>
+      <div class="section">
+        <div class="label">CLAUDE HOOKS</div>
+        <div class="row">
+          <button id="hooks-install">reinstall</button>
+          <button id="hooks-uninstall">uninstall</button>
+          <span id="hook-status" class="grow"></span>
+        </div>
+      </div>
 
-    <div class="section">
-      <div class="label">SHOW</div>
-      <div class="row"><label for="t-bubbles">speech bubbles</label><input type="checkbox" id="t-bubbles"></div>
-      <div class="row"><label for="t-stats">stats line <em>on hover</em></label><input type="checkbox" id="t-stats"></div>
-      <div class="row"><label for="t-glow">glow</label><input type="checkbox" id="t-glow"></div>
-      <div class="row"><span>size</span><input type="range" id="scale" min="1" max="2.5" step="0.25"><span id="scale-label" class="val"></span></div>
-    </div>
-
-    <div class="section">
-      <div class="label">SOUND</div>
-      <div class="row"><label for="t-sound">chiptune sounds</label><input type="checkbox" id="t-sound"></div>
-      <div class="row"><span>vol</span><input type="range" id="volume" min="0" max="1" step="0.05"><span id="volume-label" class="val"></span></div>
-      <div class="note">synthesized in code — no audio files.<br>important notifications always chime, even muted.</div>
-    </div>
-
-    <div class="section">
-      <div class="label">CLAUDE HOOKS</div>
-      <div class="row">
-        <button id="hooks-install">reinstall</button>
-        <button id="hooks-uninstall">uninstall</button>
-        <span id="hook-status" class="grow"></span>
+      <div class="section">
+        <div class="label">DANGER</div>
+        <div class="row"><button class="danger" id="reset">reset to lv.0…</button></div>
+        <div class="note">wipes xp, stats and accessory.<br>keeps name, palette, sound and position.</div>
       </div>
     </div>
 
-    <div class="section">
-      <div class="label">DANGER</div>
-      <div class="row"><button class="danger" id="reset">reset to lv.0…</button></div>
-      <div class="note">wipes xp, stats and accessory.<br>keeps name, palette, sound and position.</div>
-    </div>
+    <div class="panel" id="panel-appearance" role="tabpanel" aria-labelledby="tab-appearance" hidden>
+      <div class="section">
+        <div class="label">PALETTE</div>
+        <div class="swatches" id="palettes"></div>
+      </div>
 
-    <div class="section">
-      <div class="label">DEBUG <em>state</em></div>
-      <div class="row"><span class="val" style="text-align:left;min-width:44px">level</span><input type="range" id="dbg-level" min="0" max="25" step="1"><span class="val" id="dbg-level-label"></span></div>
-      <div class="row"><span class="val" style="text-align:left;min-width:44px">food</span><input type="range" id="dbg-food" min="0" max="200" step="1"><span class="val" id="dbg-food-label"></span></div>
-      <div class="row"><span class="val" style="text-align:left;min-width:44px">energy</span><input type="range" id="dbg-energy" min="0" max="100" step="1"><span class="val" id="dbg-energy-label"></span></div>
-      <div class="row"><span class="val" style="text-align:left;min-width:44px">mood</span><input type="range" id="dbg-mood" min="0" max="100" step="1"><span class="val" id="dbg-mood-label"></span></div>
-      <div class="debug-grid" style="margin-top:14px">
-        <button id="dbg-xp">+100 xp</button>
-        <button id="dbg-commits9">commits → next is 10th</button>
-        <button id="dbg-streak4">streak → next is 5th</button>
-        <button id="dbg-tokens">tokens → next 1M soon</button>
-        <button id="dbg-sleep">sleep</button>
-        <button id="dbg-wake">wake</button>
+      <div class="section">
+        <div class="label">ACCESSORY <em>one at a time, unlocked by level</em></div>
+        <div class="accs" id="accessories"></div>
+      </div>
+
+      <div class="section">
+        <div class="label">SHOW</div>
+        <div class="row"><label for="t-bubbles">speech bubbles</label><input type="checkbox" id="t-bubbles"></div>
+        <div class="row"><label for="t-stats">stats line <em>on hover</em></label><input type="checkbox" id="t-stats"></div>
+        <div class="row"><label for="t-glow">glow</label><input type="checkbox" id="t-glow"></div>
+        <div class="row"><span>size</span><input type="range" id="scale" min="1" max="2.5" step="0.25"><span id="scale-label" class="val"></span></div>
       </div>
     </div>
 
-    <div class="section">
-      <div class="label">DEBUG <em>fake events</em></div>
-      <div class="debug-grid" id="debug-events"></div>
-      <div class="note">fired through the real reducer — real stats, real reactions.</div>
-    </div>
-
-    <div class="section">
-      <div class="label">DEBUG <em>anims</em></div>
-      <div class="debug-grid" id="debug-anims"></div>
-      <div class="debug-grid">
-        <button id="dbg-bubble">bubble</button>
-        <button id="dbg-important">important bubble</button>
+    <div class="panel" id="panel-debug" role="tabpanel" aria-labelledby="tab-debug" hidden>
+      <div class="section">
+        <div class="label">STATE <em>drag to forge a mood</em></div>
+        <div class="row"><span class="val" style="text-align:left;min-width:44px">level</span><input type="range" id="dbg-level" min="0" max="25" step="1"><span class="val" id="dbg-level-label"></span></div>
+        <div class="row"><span class="val" style="text-align:left;min-width:44px">food</span><input type="range" id="dbg-food" min="0" max="200" step="1"><span class="val" id="dbg-food-label"></span></div>
+        <div class="row"><span class="val" style="text-align:left;min-width:44px">energy</span><input type="range" id="dbg-energy" min="0" max="100" step="1"><span class="val" id="dbg-energy-label"></span></div>
+        <div class="row"><span class="val" style="text-align:left;min-width:44px">mood</span><input type="range" id="dbg-mood" min="0" max="100" step="1"><span class="val" id="dbg-mood-label"></span></div>
+        <div class="debug-grid" style="margin-top:14px">
+          <button id="dbg-xp">+100 xp</button>
+          <button id="dbg-commits9">commits → next is 10th</button>
+          <button id="dbg-streak4">streak → next is 5th</button>
+          <button id="dbg-tokens">tokens → next 1M soon</button>
+          <button id="dbg-sleep">sleep</button>
+          <button id="dbg-wake">wake</button>
+        </div>
       </div>
-    </div>
 
-    <div class="section">
-      <div class="label">DEBUG <em>sounds</em></div>
-      <div class="debug-grid" id="debug-sounds"></div>
+      <div class="section">
+        <div class="label">FAKE EVENTS</div>
+        <div class="debug-grid" id="debug-events"></div>
+        <div class="note">fired through the real reducer — real stats, real reactions.</div>
+      </div>
+
+      <div class="section">
+        <div class="label">ANIMS</div>
+        <div class="debug-grid" id="debug-anims"></div>
+        <div class="debug-grid">
+          <button id="dbg-bubble">bubble</button>
+          <button id="dbg-important">important bubble</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="label">SOUNDS</div>
+        <div class="debug-grid" id="debug-sounds"></div>
+      </div>
     </div>
   </div>
 
-  <div id="hint">CHANGES APPLY INSTANTLY · ESC CLOSES</div>
+  <div id="hint">CHANGES APPLY INSTANTLY · <span id="tabkey">⌘</span>1-3 TABS · ESC CLOSES</div>
 </div>
 <script src="settings.js"></script>
 </body>

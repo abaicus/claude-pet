@@ -92,6 +92,34 @@ function render(s) {
 petAPI.onState(render);
 petAPI.getState().then(render);
 
+// ------------------------------------------------------------------ tabs
+// Which panel is on top is window chrome, not pet state: the brain neither
+// knows nor cares, and the window opens on the first tab every time. Hidden
+// panels stay in the DOM, so render() keeps filling them in either way.
+const tabs = [...document.querySelectorAll('.tab')];
+function showTab(name) {
+  for (const t of tabs) {
+    const on = t.dataset.panel === name;
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+    t.tabIndex = on ? 0 : -1;   // one stop for the whole strip, arrows move within it
+    $('panel-' + t.dataset.panel).hidden = !on;
+  }
+  $('scroll').scrollTop = 0;    // a panel you just opened starts at its top
+}
+tabs.forEach((t, i) => {
+  t.addEventListener('click', () => showTab(t.dataset.panel));
+  t.addEventListener('keydown', (e) => {
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const next = tabs[(i + step + tabs.length) % tabs.length];
+    showTab(next.dataset.panel);
+    next.focus();
+  });
+});
+showTab(tabs[0].dataset.panel);
+if (!navigator.platform.startsWith('Mac')) $('tabkey').textContent = 'CTRL+';
+
 // ------------------------------------------------------------------ inputs
 $('name').addEventListener('change', () => {
   if (!suppress) petAPI.command({ type: 'setName', name: $('name').value });
@@ -113,7 +141,13 @@ $('volume').addEventListener('input', () => {
 $('hooks-install').addEventListener('click', () => petAPI.command({ type: 'installHooks' }));
 $('close').addEventListener('click', () => petAPI.closeSettings());
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') petAPI.closeSettings();
+  if (e.key === 'Escape') { petAPI.closeSettings(); return; }
+  // ⌘1–3 jumps between tabs. Alt is excluded on purpose: every global
+  // accelerator this app installs is Cmd+Alt+something.
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && /^[1-9]$/.test(e.key)) {
+    const t = tabs[Number(e.key) - 1];
+    if (t) { e.preventDefault(); showTab(t.dataset.panel); t.focus(); }
+  }
 });
 $('hooks-uninstall').addEventListener('click', () => petAPI.command({ type: 'uninstallHooks' }));
 

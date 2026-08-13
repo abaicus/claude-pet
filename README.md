@@ -56,13 +56,18 @@ the hook script is fire-and-forget and can never block or fail a session.
   | **`⌘⌥M`** sounds | **`⌘⌥P`** click-through | **`⌘⌥Q`** quit |
 
   `⌘⌥P` is the escape hatch: a click-through pet can't offer its own way back.
-- **Settings**: name, 12 palettes, 27 level-locked accessories, speech
-  bubble / stats line / glow toggles, size slider, sounds (synthesized
-  chiptune, **off by default** — important notifications always chime; the
-  volume slider samples the level as you drag it, and stays quiet when muted),
-  danger-zone reset (survives: customization, sound settings, event cursor),
-  and debug sections (set level/stats, fire fake events through the real
-  reducer, trigger any animation or sound). `esc` or `✕` closes it.
+- **Settings**, in three tabs (click, `←`/`→`, or `⌘1`–`⌘3`):
+  - *Settings* — name, sounds (synthesized chiptune, **off by default** —
+    important notifications always chime; the volume slider samples the level
+    as you drag it, and stays quiet when muted), hook install/uninstall, and a
+    danger-zone reset (survives: customization, sound settings, event cursor).
+  - *Appearance* — 12 palettes, 27 level-locked accessories, speech bubble /
+    stats line / glow toggles, size slider.
+  - *Debug* — set level and stats, fire fake events through the real reducer,
+    trigger any animation or sound. Kept behind its own tab so the two tabs
+    you actually use aren't a wall of test buttons.
+
+  `esc` or `✕` closes it.
 
 Every sprite is pixel art drawn on an integer grid at runtime — no image
 files. The silhouette's per-row half-width table places the face, ears and
@@ -104,6 +109,19 @@ The hook payloads carry far more than "a tool ran", so the pet reads them:
   an idle one means *waiting*, and `Stop` means the turn ended and it's your
   keyboard. `SubagentStop` deliberately does not — a helper finishing is not
   the turn finishing, and saying so would be a lie about whose move it is.
+
+### A noise it can't explain is a bug
+
+Every chime comes with words. A reaction says its own line if it has one — and
+where the payload names the thing, that name is what gets said, every time
+(`*reads reducer.js*`, `*pokes the Sanity server*`, `*list the project files*`
+straight from Claude's own description of the command). Where it doesn't, the
+sound itself supplies the words: each of the 55 motifs is mapped to a phrase
+pool, and the brain speaks from it whenever a reaction chirped and nothing
+more specific was said. Otherwise you hear a blip, look up, and have no way of
+finding out what the pet just noticed. One test walks the motif table to prove
+no sound can play in silence; the rule runs once per event, over the whole
+batch of effects, so a generic line can never elbow out a specific one.
 
 ### Where the context number comes from
 
