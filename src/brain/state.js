@@ -19,6 +19,8 @@ function defaultState(now = 0) {
     lastEventAt: 0,              // any hook event
     lastMeaningfulAt: 0,         // events that count as "activity" for sleep/idle
     sleeping: false,
+    todos: null,                 // last TodoWrite seen: {n, d, p, at}
+    pm: null,                    // last permission_mode seen (changes are news)
     combo: { count: 0, lastAt: 0 },
     petXpAt: 0,                  // last time petting granted xp (rate limit)
     treatAt: 0                   // last treat (cooldown)

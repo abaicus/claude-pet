@@ -164,11 +164,20 @@ $('dbg-wake').addEventListener('click', () => petAPI.command({ type: 'debugSleep
 
 // ------------------------------------------------------------------ debug: fake events through the real reducer
 const DEBUG_EVENTS = [
-  ['prompt', 'prompt'], ['edit', 'edit'], ['commit', 'commit'],
+  ['prompt', 'prompt'], ['bigPrompt', 'big prompt'], ['edit', 'edit'],
+  ['tinyEdit', 'tiny edit'], ['feast', 'tasty diff'], ['testFile', 'test file'],
+  ['commit', 'commit'], ['commitStat', 'commit +stat'], ['gitDiff', 'git diff'],
   ['testsGreen', 'tests ✓'], ['testsRed', 'tests ✗'], ['deploy', 'deploy 🚀'],
-  ['push', 'push'], ['rmRf', 'rm -rf'], ['toolFail', 'tool fail'],
-  ['notification', 'notification'], ['sessionStart', 'session start'],
-  ['sessionEnd', 'session end'], ['preCompact', 'pre-compact']
+  ['release', 'release 🎁'], ['push', 'push'], ['forcePush', 'force push'],
+  ['resetHard', 'reset --hard'], ['rmRf', 'rm -rf'], ['docker', 'docker'],
+  ['lint', 'lint'], ['migrate', 'migrate'],
+  ['todos', 'todo tick'], ['todosDone', 'todos done'],
+  ['dispatch', 'subagent →'], ['subagentBack', 'subagent ←'],
+  ['webFetch', 'web fetch'], ['mcpCall', 'mcp call'],
+  ['modePlan', 'mode: plan'], ['modeNormal', 'mode: default'],
+  ['toolFail', 'tool fail'], ['notification', 'permission'], ['waiting', 'waiting'],
+  ['sessionStart', 'session start'], ['resume', 'session resume'],
+  ['sessionEnd', 'session end'], ['preCompact', 'pre-compact'], ['compactAuto', 'auto-compact']
 ];
 for (const [name, label] of DEBUG_EVENTS) {
   const b = document.createElement('button');
@@ -178,7 +187,10 @@ for (const [name, label] of DEBUG_EVENTS) {
 }
 
 // ------------------------------------------------------------------ debug: every animation reachable
-const DEBUG_ANIMS = ['eat', 'party', 'party-big', 'sulk', 'sleep', 'wake', 'attention', 'flinch', 'hearts', 'wave'];
+const DEBUG_ANIMS = [
+  'eat', 'nibble', 'feast', 'party', 'party-big', 'sulk', 'sleep', 'wake',
+  'attention', 'flinch', 'shiver', 'hearts', 'wave', 'sniff', 'think', 'nod', 'spin'
+];
 for (const a of DEBUG_ANIMS) {
   const b = document.createElement('button');
   b.textContent = a;
@@ -190,8 +202,11 @@ for (const a of DEBUG_ANIMS) {
 }
 const DEBUG_SOUNDS = [
   'commit', 'green', 'red', 'merge', 'push', 'branch', 'stash', 'install', 'build', 'deploy',
-  'eat', 'prompt', 'growl', 'chonk', 'pet', 'treat', 'nope', 'sad', 'lonely', 'wake', 'sleep', 'bye',
-  'peek', 'web', 'mcp', 'done', 'minion', 'compact', 'gossip', 'ding',
+  'release', 'clone', 'undo', 'tidy', 'types', 'whale', 'migrate',
+  'eat', 'feast', 'prompt', 'growl', 'chonk', 'pet', 'treat', 'nope', 'sad', 'lonely',
+  'wake', 'sleep', 'bye', 'spook', 'zap',
+  'peek', 'sniff', 'diff', 'web', 'mcp', 'done', 'minion', 'dispatch', 'todo', 'checklist',
+  'compact', 'gossip', 'ding',
   'levelup', 'transform', 'hatch', 'milestone', 'combo', 'equip', 'reset',
   'notify', 'warn', 'hint'
 ];

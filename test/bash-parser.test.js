@@ -1,12 +1,28 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert');
-const { classifyBash, parseTestOutput } = require('../src/brain/bash-parser');
+const { classifyBash, parseTestOutput, parseDiffStat } = require('../src/brain/bash-parser');
 
 test('commit detected', () => {
   assert.equal(classifyBash('git commit -m "feat: x"').kind, 'commit');
   assert.equal(classifyBash('git add -A && git commit -m msg').kind, 'commit');
-  assert.equal(classifyBash('git commit --amend --no-edit').kind, 'commit');
+});
+
+// An amend rewrites the last commit; treating it as a new one would double
+// count it and hand out xp for the same work twice.
+test('amend is not a commit', () => {
+  assert.equal(classifyBash('git commit --amend --no-edit').kind, 'amend');
+  assert.equal(classifyBash('git commit --amend -m "fix"').kind, 'amend');
+  assert.equal(classifyBash('git commit --amend', '', false).kind, 'commit-failed');
+});
+
+test('a commit reports the size git printed', () => {
+  const out = '[main 1a2b3c4] feat: x\n 3 files changed, 48 insertions(+), 12 deletions(-)';
+  const r = classifyBash('git commit -m x', out);
+  assert.equal(r.kind, 'commit');
+  assert.deepEqual(r.stat, { files: 3, add: 48, del: 12 });
+  // no --stat, no numbers: the patch tail would undercount, so we say nothing
+  assert.equal(classifyBash('git commit -m x', '[main 1a2b3c4] feat: x').stat, null);
 });
 
 test('failed commit is not a party', () => {
@@ -114,11 +130,75 @@ test('rm -rf flinch', () => {
   assert.equal(classifyBash('rm -r -f dist').kind, 'rm-rf');
 });
 
+test('the scary ones outrank their harmless cousins', () => {
+  assert.equal(classifyBash('git push --force origin main').kind, 'force-push');
+  assert.equal(classifyBash('git push --force-with-lease').kind, 'force-push');
+  assert.equal(classifyBash('git push -f').kind, 'force-push');
+  assert.equal(classifyBash('git push origin main').kind, 'push');   // still just a push
+  assert.equal(classifyBash('git reset --hard HEAD~1').kind, 'reset-hard');
+  assert.equal(classifyBash('git reset HEAD~1'), null);              // soft reset is nothing
+  assert.equal(classifyBash('kill -9 4213').kind, 'kill');
+});
+
+test('reading a diff', () => {
+  const r = classifyBash('git diff --stat', ' 2 files changed, 9 insertions(+), 3 deletions(-)');
+  assert.equal(r.kind, 'diff');
+  assert.deepEqual(r.stat, { files: 2, add: 9, del: 3 });
+  assert.equal(classifyBash('git diff').stat, null);
+  assert.equal(classifyBash('git show HEAD').kind, 'diff');
+});
+
+test('the rest of the vocabulary', () => {
+  const cases = {
+    'git revert abc123': 'revert',
+    'git clone git@github.com:x/y.git': 'clone',
+    'git status': 'inspect',
+    'git log --oneline -5': 'inspect',
+    'npm publish': 'release',
+    'gh release create v1.2.0': 'release',
+    'git tag -a v1.2.0 -m "release"': 'release',
+    'cargo publish': 'release',
+    'docker compose up -d': 'docker',
+    'docker build -t x .': 'docker',
+    'prisma migrate dev': 'migrate',
+    'npm run db:migrate': 'migrate',
+    'npx eslint src/': 'lint',
+    'cargo clippy': 'lint',
+    'npm run format': 'lint',
+    'tsc --noEmit': 'typecheck',
+    'npm run typecheck': 'typecheck',
+    'mypy .': 'typecheck',
+    'rg "TODO" src/': 'search',
+    'find . -name "*.ts"': 'search',
+    'curl https://example.com': 'net',
+    'sudo systemctl restart nginx': 'sudo'
+  };
+  for (const [cmd, kind] of Object.entries(cases)) {
+    const r = classifyBash(cmd);
+    assert.ok(r, `${cmd} classified as nothing`);
+    assert.equal(r.kind, kind, `${cmd} → ${r.kind}`);
+  }
+});
+
+// Order is semantics: a more specific reading must win over a generic one.
+test('specific readings beat generic ones', () => {
+  assert.equal(classifyBash('docker build -t app .').kind, 'docker');       // not build
+  assert.equal(classifyBash('sudo npm install -g x').kind, 'install');      // not sudo
+  assert.equal(classifyBash('grep -r x src/ && npm run build').kind, 'build'); // build wins over search
+});
+
 test('plain commands are null', () => {
   assert.equal(classifyBash('ls -la'), null);
   assert.equal(classifyBash('cat foo.txt'), null);
-  assert.equal(classifyBash('git status'), null);
   assert.equal(classifyBash('rm file.txt'), null);
+  assert.equal(classifyBash('cd /tmp'), null);
+});
+
+test('parseDiffStat only reports what git actually printed', () => {
+  assert.deepEqual(parseDiffStat(' 1 file changed, 2 insertions(+)'), { files: 1, add: 2, del: 0 });
+  assert.deepEqual(parseDiffStat(' 4 files changed, 7 deletions(-)'), { files: 4, add: 0, del: 7 });
+  assert.equal(parseDiffStat('diff --git a/x b/x\n+added line\n-removed line'), null);
+  assert.equal(parseDiffStat(''), null);
 });
 
 test('parseTestOutput returns null on garbage', () => {

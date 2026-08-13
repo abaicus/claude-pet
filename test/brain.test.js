@@ -226,3 +226,33 @@ test('render state exposes the dumb-renderer contract', () => {
   assert.equal(rs.form, 'egg');
   assert.equal(rs.xpNext, 50);
 });
+
+test('the stats line shows Claude\'s todo progress, then stops when it\'s stale', () => {
+  const { brain, setNow } = makeBrain();
+  const { TUNING } = require('../src/shared/constants');
+  brain.state.todos = { n: 7, d: 3, p: 1, at: T0 };
+  assert.match(brain.statsLine(T0).text, /☑ 3\/7/);
+
+  // A list nobody has touched in a quarter of an hour is not live telemetry.
+  const stale = T0 + TUNING.todoFreshMs + 1;
+  setNow(stale);
+  assert.ok(!brain.statsLine(stale).text.includes('☑'));
+
+  // A finished list is not progress either — the party already said so.
+  brain.state.todos = { n: 7, d: 7, p: 0, at: T0 };
+  assert.ok(!brain.statsLine(T0).text.includes('☑'));
+});
+
+test('debug event presets all resolve through the real reducer', () => {
+  const { brain } = makeBrain();
+  // Every button the settings window offers must hit a preset that exists;
+  // a typo here is a dead button nothing reports.
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'settings', 'settings.js'), 'utf8');
+  const list = src.match(/const DEBUG_EVENTS = \[([\s\S]*?)\n\];/)[1];
+  const names = [...list.matchAll(/\['([a-zA-Z]+)',/g)].map(m => m[1]);
+  assert.ok(names.length >= 20, `expected a real grid, found ${names.length}`);
+  for (const name of names) {
+    const res = brain.command({ type: 'debugEvent', name });
+    assert.equal(res.ok, true, `preset '${name}' is offered but does not exist`);
+  }
+});

@@ -31,7 +31,9 @@ let facing = 1;             // 1 = right, -1 = left
 
 const ANIM_DUR = {
   eat: 700, party: 1600, partyBig: 2800, sulk: 1800, wake: 900,
-  attention: 1600, hearts: 1100, flinch: 500, wave: 1000, sleep: 1200
+  attention: 1600, hearts: 1100, flinch: 500, wave: 1000, sleep: 1200,
+  nibble: 460, feast: 1300, sniff: 950, think: 1500, nod: 620,
+  spin: 720, shiver: 700
 };
 
 function resize() {
@@ -109,6 +111,15 @@ function startAnim(name, big) {
     spawnHearts(5);
   } else if (name === 'attention') {
     anim = { name, start: t, dur: ANIM_DUR.attention };
+  } else if (name === 'feast') {
+    anim = { name, start: t, dur: ANIM_DUR.feast };
+    spawnCrumbs(9);
+  } else if (name === 'think') {
+    anim = { name, start: t, dur: ANIM_DUR.think };
+    spawnDots(3);
+  } else if (name === 'spin') {
+    anim = { name, start: t, dur: ANIM_DUR.spin };
+    spawnConfetti(8, false);
   } else {
     anim = { name, big, start: t, dur: ANIM_DUR[name] || 800 };
   }
@@ -141,6 +152,44 @@ function spawnHearts(n) {
     });
   }
 }
+// Where this form's head actually ends — particles anchor to the sprite, not
+// to the art box, or they hover in empty space above a small pet.
+function headTopY() {
+  const g = (state && PetArt.GEOM[state.form]) || PetArt.GEOM.hatchling;
+  return -g.h;
+}
+
+// Crumbs from a big diff: they spray from mouth height and fall past the body.
+function spawnCrumbs(n) {
+  const colors = ['#c9a227', '#a8813a', '#e0c069'];
+  const mouthY = headTopY() * 0.4;
+  for (let i = 0; i < n; i++) {
+    // Two sprays from the mouth corners, thrown outward — the face is sacred,
+    // so crumbs must clear it rather than settle on it.
+    const side = i % 2 ? 1 : -1;
+    particles.push({
+      type: 'crumb',
+      x: side * (9 + Math.random() * 7),
+      y: mouthY - Math.random() * 6,
+      vx: side * (30 + Math.random() * 45),
+      vy: -40 - Math.random() * 45,
+      color: colors[i % colors.length],
+      age: -i * 0.05, life: 0.9 + Math.random() * 0.4
+    });
+  }
+}
+// Thought dots, rising in sequence just above the head.
+function spawnDots(n) {
+  const top = headTopY() - 8;
+  for (let i = 0; i < n; i++) {
+    particles.push({
+      type: 'dot',
+      x: 13 + i * 8, y: top - i * 6,
+      vx: 3, vy: -7,
+      age: -i * 0.22, life: 1.0
+    });
+  }
+}
 function spawnZzz() {
   particles.push({
     type: 'zzz',
@@ -154,7 +203,7 @@ let lastZzz = 0;
 
 // motion computed from active anim + passive state
 function computeMotion(t) {
-  const m = { hop: 0, squash: 0, tilt: 0, mouthOpen: false, exclaim: false, sweat: false };
+  const m = { hop: 0, squash: 0, tilt: 0, spinX: 1, mouthOpen: false, exclaim: false, sweat: false };
   const s = state;
   if (!s) return m;
 
@@ -201,6 +250,52 @@ function computeMotion(t) {
     }
     case 'wave': {
       m.tilt = Math.sin(el * Math.PI * 3) * 0.08;
+      break;
+    }
+    // Motion below is sized in whole ART PIXELS, because that is all the
+    // sprite can express: hop is quantised by PX (4) and squash by rows
+    // (round(squash * 3)), so a hop of 2 or a squash of 0.05 is not a subtle
+    // movement — it is no movement at all.
+    case 'nibble': {                            // a one-liner: quick little chew
+      const chew = (el * 6) % 1 < 0.5;
+      m.mouthOpen = chew;
+      m.hop = chew ? 4 : 0;                     // 1px bob per bite
+      break;
+    }
+    case 'feast': {                             // a tasty diff: whole-body chomp
+      const beat = Math.abs(Math.sin(el * Math.PI * 4));
+      m.mouthOpen = (el * 8) % 1 < 0.6;
+      m.squash = beat * 0.22;                   // up to 1 row of splat
+      m.hop = beat * 8;                         // …and 2px of bounce
+      break;
+    }
+    case 'sniff': {                             // leans in, nose twitching
+      m.tilt = 0.16 + Math.sin(el * Math.PI * 6) * 0.08;
+      m.hop = Math.abs(Math.sin(el * Math.PI * 3)) * 4;
+      break;
+    }
+    case 'think': {                             // head cocked, dots overhead
+      m.tilt = 0.12;
+      m.hop = Math.abs(Math.sin(el * Math.PI * 2)) * 4;
+      break;
+    }
+    case 'nod': {                               // yes! (a ticked box)
+      const b = Math.sin(el * Math.PI * 4);
+      m.hop = Math.max(0, b) * 8;
+      m.squash = Math.max(0, -b) * 0.22;
+      break;
+    }
+    case 'spin': {
+      // A pixel sprite doesn't rotate — it flips through a few whole-pixel
+      // widths, the way a spinning sprite sheet would.
+      const c = Math.cos(el * Math.PI * 2);
+      const a = Math.abs(c);
+      m.spinX = (c < 0 ? -1 : 1) * (a > 0.75 ? 1 : a > 0.35 ? 0.5 : 0.25);
+      m.hop = Math.sin(el * Math.PI) * 6;
+      break;
+    }
+    case 'shiver': {                            // ±2 art pixels, fast — dread
+      m.tilt = (Math.floor(el * 26) % 2 ? 1 : -1) * 0.18;
       break;
     }
     case 'hearts': break;
@@ -254,7 +349,8 @@ function frame(t) {
 
   ctx2d.save();
   ctx2d.translate(cx, feetY - PetArt.FEET_Y * scale);
-  ctx2d.scale(scale * facing, scale);   // scale about the feet; facing flips X
+  // scale about the feet; facing flips X, spinX narrows it mid-spin
+  ctx2d.scale(scale * facing * (motion.spinX || 1), scale);
 
   PetArt.drawPet(ctx2d, {
     form: s.form,
@@ -288,7 +384,7 @@ function drawOverlays(t, motion, scale, cx, feetY, dt) {
     if (p.age < 0) continue;
     p.x += p.vx * dt;
     p.y += p.vy * dt;
-    if (p.type === 'confetti') p.vy += 160 * dt; // gravity
+    if (p.type === 'confetti' || p.type === 'crumb') p.vy += 160 * dt; // gravity
     const fade = 1 - p.age / p.life;
     ctx2d.globalAlpha = Math.max(0, Math.min(1, fade * 1.4));
     // Everything here is drawn on the art grid too — a rotating confetti
@@ -298,6 +394,14 @@ function drawOverlays(t, motion, scale, cx, feetY, dt) {
     if (p.type === 'confetti') {
       ctx2d.fillStyle = p.color;
       ctx2d.fillRect(snap(p.x), snap(p.y), G, G);
+    } else if (p.type === 'crumb') {            // half-pixel specks of diff
+      ctx2d.fillStyle = p.color;
+      ctx2d.fillRect(snap(p.x), snap(p.y), G / 2, G / 2);
+    } else if (p.type === 'dot') {              // thinking…
+      ctx2d.fillStyle = '#2b2b2b';
+      ctx2d.fillRect(snap(p.x), snap(p.y), G, G);
+      ctx2d.fillStyle = '#fffef2';
+      ctx2d.fillRect(snap(p.x) + G / 4, snap(p.y) + G / 4, G / 2, G / 2);
     } else if (p.type === 'heart') {
       drawPixelHeart(snap(p.x), snap(p.y), G, '#ff6f91');
     } else if (p.type === 'zzz') {

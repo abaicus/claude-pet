@@ -241,3 +241,120 @@ test('a replayed synthetic "real day" produces sane numbers', () => {
   assert.ok(s.energy >= 0 && s.energy <= 100);
   assert.ok(s.mood >= 0 && s.mood <= 100);
 });
+
+// ---------------------------------------------------------------- detail from Claude
+const bubbles = (fx) => fx.filter(f => f.type === 'bubble').map(f => f.text);
+const anims = (fx) => fx.filter(f => f.type === 'anim').map(f => f.name);
+const sounds = (fx) => fx.filter(f => f.type === 'sound').map(f => f.name);
+
+test('a big edit is a feast: more food, and the size is labeled ~', () => {
+  const s = fresh();
+  const fx = reduce(s, ev('PostToolUse', { tool: 'Edit', file: 'a.ts', add: 50, del: 20 }), ctx(T0, true, () => 0.01));
+  assert.equal(s.food, 20 + TUNING.foodPerEdit + TUNING.feastFood);
+  assert.ok(anims(fx).includes('feast'));
+  assert.ok(sounds(fx).includes('feast'));
+  // `add`/`del` are the edit's own line counts, not a git diff — so `~`.
+  assert.match(bubbles(fx)[0], /~70 lines/);
+});
+
+test('a one-line edit is a nibble, not a feast', () => {
+  const s = fresh();
+  const fx = reduce(s, ev('PostToolUse', { tool: 'Edit', file: 'a.js', add: 1, del: 1 }), ctx());
+  assert.equal(s.food, 20 + TUNING.foodPerEdit);
+  assert.ok(anims(fx).includes('nibble'));
+  assert.ok(!anims(fx).includes('feast'));
+});
+
+test('editing a test file is its own moment', () => {
+  const s = fresh();
+  const fx = reduce(s, ev('PostToolUse', { tool: 'Write', file: 'reducer.test.js', add: 10 }), ctx(T0, true, () => 0.1));
+  assert.match(bubbles(fx)[0], /test/i);
+});
+
+test('commit states git\'s own numbers flat — no ~ on facts git counted', () => {
+  const s = fresh();
+  const out = '[main abc1234] x\n 3 files changed, 48 insertions(+), 12 deletions(-)';
+  const fx = reduce(s, ev('PostToolUse', { tool: 'Bash', cmd: 'git commit -m x', out }), ctx(T0, true, () => 0.01));
+  assert.match(bubbles(fx)[0], /\+48 −12/);
+  assert.ok(!bubbles(fx)[0].includes('~'));
+});
+
+test('a diff without a stat line reports no numbers at all', () => {
+  const s = fresh();
+  const fx = reduce(s, ev('PostToolUse', { tool: 'Bash', cmd: 'git diff', out: '+ a line\n- another' }), ctx());
+  for (const b of bubbles(fx)) assert.ok(!/\d+/.test(b), `invented numbers: ${b}`);
+});
+
+test('todos: a ticked box, then a finished list', () => {
+  const s = fresh();
+  const speak = ctx(T0, true, () => 0.01);
+  let fx = reduce(s, ev('PostToolUse', { tool: 'TodoWrite', todo: { n: 3, d: 0, p: 1 } }), speak);
+  assert.deepEqual(anims(fx), []);                       // a new plan is quiet
+  assert.equal(s.todos.n, 3);
+
+  fx = reduce(s, ev('PostToolUse', { tool: 'TodoWrite', todo: { n: 3, d: 1, p: 1 } }), speak);
+  assert.ok(anims(fx).includes('nod'));
+  assert.equal(bubbles(fx)[0], '1/3 done ✓');
+  assert.equal(s.xp, TUNING.todoXp);
+
+  fx = reduce(s, ev('PostToolUse', { tool: 'TodoWrite', todo: { n: 3, d: 3, p: 0 } }), speak);
+  assert.ok(anims(fx).includes('spin'));
+  assert.ok(sounds(fx).includes('checklist'));
+  assert.equal(s.xp, TUNING.todoXp + TUNING.todoDoneXp);
+});
+
+test('the same todo list resubmitted unchanged says nothing', () => {
+  const s = fresh();
+  reduce(s, ev('PostToolUse', { tool: 'TodoWrite', todo: { n: 2, d: 1, p: 1 } }), ctx());
+  const fx = reduce(s, ev('PostToolUse', { tool: 'TodoWrite', todo: { n: 2, d: 1, p: 1 } }), ctx());
+  assert.deepEqual(fx.filter(f => f.type !== 'sound'), []);
+});
+
+test('permission mode: the change is news, the first sighting is not', () => {
+  const s = fresh();
+  let fx = reduce(s, ev('PostToolUse', { tool: 'Read', pm: 'default' }), ctx());
+  assert.deepEqual(bubbles(fx), []);              // just learning where we are
+  assert.equal(s.pm, 'default');
+
+  fx = reduce(s, ev('PostToolUse', { tool: 'Read', pm: 'bypassPermissions' }), ctx());
+  assert.ok(sounds(fx).includes('spook'));
+  assert.ok(fx.some(f => f.type === 'bubble' && f.important));
+
+  fx = reduce(s, ev('PostToolUse', { tool: 'Read', pm: 'bypassPermissions' }), ctx());
+  assert.deepEqual(bubbles(fx), []);              // unchanged is not a change
+});
+
+test('SessionStart after a compaction is not a new hello', () => {
+  const s = fresh();
+  const quiet = reduce(s, ev('SessionStart', { source: 'compact' }), ctx());
+  assert.deepEqual(quiet.filter(f => f.type !== 'milestone'), []);
+  const hello = reduce(s, ev('SessionStart', { source: 'resume' }), ctx());
+  assert.ok(anims(hello).includes('wake'));
+});
+
+test('a subagent is announced when it goes out and when it comes back', () => {
+  const s = fresh();
+  const out = reduce(s, ev('PreToolUse', { tool: 'Task', agent: 'Explore' }), ctx(T0, true, () => 0.01));
+  assert.ok(anims(out).includes('think'));
+  assert.match(bubbles(out)[0], /Explore/);
+  const back = reduce(s, ev('PostToolUse', { tool: 'Task', agent: 'Explore', ok: true }), ctx(T0, true, () => 0.01));
+  assert.match(bubbles(back)[0], /Explore/);
+});
+
+test('a WebFetch names the host it actually read', () => {
+  const s = fresh();
+  const fx = reduce(s, ev('PostToolUse', { tool: 'WebFetch', host: 'docs.claude.com', ok: true }), ctx(T0, true, () => 0.01));
+  assert.match(bubbles(fx)[0], /docs\.claude\.com/);
+});
+
+test('nothing fires during a replay, however detailed the event', () => {
+  const s = fresh();
+  const events = [
+    ev('PostToolUse', { tool: 'Edit', add: 90, del: 40 }),
+    ev('PostToolUse', { tool: 'TodoWrite', todo: { n: 2, d: 2, p: 0 } }),
+    ev('PostToolUse', { tool: 'Bash', cmd: 'git push --force' }),
+    ev('PreToolUse', { tool: 'Task', agent: 'Explore' })
+  ];
+  for (const e of events) assert.deepEqual(reduce(s, e, ctx(T0, false)), []);
+  assert.ok(s.xp > 0, 'stats still moved');
+});

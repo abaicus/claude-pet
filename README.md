@@ -7,7 +7,7 @@ coding sessions and reacts; it never interferes with them.
 Beyond the toy: it taps you on the shoulder when Claude is blocked waiting on
 you (notification relay with chime, bypasses mute), and it surfaces live
 context-usage telemetry per session in a stats line
-(`Pixel lv.6 │ 2 sessions │ ctx ~72% │ 41k/5h │ ✓×5`).
+(`Pixel lv.6 │ 2 sessions │ ctx ~72% │ 41k/5h │ ✓×5 │ ☑ 3/7`).
 
 ## Run
 
@@ -49,13 +49,36 @@ Every sprite is pixel art drawn on an integer grid at runtime — no image
 files. The silhouette's per-row half-width table places the face, ears and
 every accessory, so nothing floats off the body; the palette hues the whole
 creature. The pet levels 0–10 through five forms (egg → hatchling → junior →
-senior → elder) on xp from commits, green tests, PRs, deploys and edits. It parses
-what bash commands *mean* — commits party, red tests sulk with the failure
-count, `rm -rf` gets a flinch. Context warnings fire once at ~75% and ~90%
-per session and re-arm below 60%.
+senior → elder) on xp from commits, green tests, PRs, deploys and edits.
+Context warnings fire once at ~75% and ~90% per session and re-arm below 60%.
 
-It never lies: estimates are labeled `~`, and data it can't read is absent,
-never faked.
+## What it notices
+
+The hook payloads carry far more than "a tool ran", so the pet reads them:
+
+- **The size of an edit.** A 70-line change is a *feast* (chomp animation,
+  crumbs, extra food); a one-liner is a nibble. Editing a test file is its own
+  small moment, and a known file extension gets a flavour ("rust!! crunchy").
+- **What a bash command means** — commits, tests, PRs, deploys, releases,
+  migrations, containers, linters, searches and the scary ones. First match
+  wins, so the order *is* the semantics: `git commit --amend` is an amend,
+  `git push --force` is a scare and not a push, `docker build` is docker and
+  not a build. Commits and `git diff --stat` report the numbers *git printed*;
+  a bare `git diff` reports none, because the output tail would undercount.
+- **Claude's todo list.** A ticked box gets a nod, a finished list gets a spin
+  and a jingle, and progress shows in the stats line while it's still live.
+- **Subagents**, announced going out (`*Explore, go!*`) and coming back.
+- **Which host** a WebFetch read, **which MCP server** a call went to.
+- **Permission-mode changes** — plan mode, auto-edit, and `bypassPermissions`,
+  which gets an important bubble and a shiver. The value is never announced,
+  only the change.
+- **Session shape**: resume vs clear vs startup, manual vs auto compaction,
+  and a permission prompt vs Claude idly waiting on you (different chimes).
+
+It never lies: estimates are labeled `~` (an edit's own line counts are not a
+git diff, so they carry one; git's numbers don't), and data it can't read is
+absent, never faked. It records the **length** of your prompt and not one
+character of its text.
 
 ## Development
 
@@ -86,7 +109,8 @@ src/
   capture/    hook script (standalone, zero deps) + settings installer
   brain/      ALL state & game logic — no Electron imports, headless-testable
               tailer (byte-offset cursor) · reducer (event → state) ·
-              bash-parser · sessions (transcript telemetry) · persistence
+              bash-parser (command semantics) · sessions (transcript
+              telemetry) · quips · persistence
   body/       dumb renderer: render(state) — canvas art, animations,
               bubble, stats line, sounds (all generated in code)
   settings/   remote control only; the brain enforces every rule

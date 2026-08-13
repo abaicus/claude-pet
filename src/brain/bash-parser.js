@@ -1,8 +1,10 @@
 'use strict';
 // Semantic bash parsing: reacting to what a command MEANS is where the
-// personality lives. First match wins down a priority list (plan order):
-// commit, tests, PR create/merge, deploy, push, merge/rebase, install,
-// branch, stash, rm -rf, build.
+// personality lives. First match wins down a priority list, so the order of
+// the blocks below IS the semantics: `git commit --amend` is an amend and not
+// a commit, `git push --force` is a scare and not a push, `docker build` is
+// docker and not a build, and `sudo npm install` is an install (sudo sits
+// near the bottom, as a fallback flavour for commands nothing else claimed).
 
 // ---------------------------------------------------------------- tests
 // Parse pass/fail counts across ~6 common runner formats. Output is the
@@ -62,6 +64,18 @@ function parseTestOutput(out) {
 
 const TEST_CMD = /\b(jest|vitest|mocha|pytest|py\.test|tox|go test|cargo (?:test|nextest)|npm (?:test|run test\S*)|yarn (?:test|run test\S*)|pnpm (?:test|run test\S*)|bun test|node\s+--test|phpunit|rspec|rails test|mix test|dotnet test|gradle(?:w)?\s+test|mvn\s+(?:test|verify))\b/;
 
+// ---------------------------------------------------------------- diffstat
+// git's own summary line, printed by `diff --stat`, `show --stat` and by
+// `commit` itself. These are git's numbers, so the pet may state them flat —
+// no `~`. A bare `git diff` prints a patch, not a summary; we get the TAIL of
+// it, and counting +/- lines there would undercount, so we report nothing.
+function parseDiffStat(out) {
+  if (typeof out !== 'string' || !out) return null;
+  const m = out.match(/(\d+)\s+files?\s+changed(?:,\s*(\d+)\s+insertions?\(\+\))?(?:,\s*(\d+)\s+deletions?\(-\))?/);
+  if (!m) return null;
+  return { files: +m[1], add: m[2] ? +m[2] : 0, del: m[3] ? +m[3] : 0 };
+}
+
 // ---------------------------------------------------------------- classify
 /**
  * @param {string} cmd    the bash command text
@@ -72,16 +86,22 @@ const TEST_CMD = /\b(jest|vitest|mocha|pytest|py\.test|tox|go test|cargo (?:test
 function classifyBash(cmd, out = '', ok = true) {
   if (typeof cmd !== 'string' || !cmd.trim()) return null;
 
-  // 1. commit
+  // 1. amend — rewriting the last commit, not making one
+  if (/\bgit\b[^|;&]*\bcommit\b[^|;&]*--amend/.test(cmd)) {
+    return ok === false ? { kind: 'commit-failed' } : { kind: 'amend' };
+  }
+
+  // 2. commit
   if (/\bgit\b[^|;&]*\bcommit\b/.test(cmd) && !/--dry-run/.test(cmd)) {
     // A failed commit (hook rejection, nothing staged) is not a party.
     if (ok === false || /nothing to commit|no changes added/i.test(out)) {
       return { kind: 'commit-failed' };
     }
-    return { kind: 'commit' };
+    // git prints the size of what it just recorded — free, exact, delicious.
+    return { kind: 'commit', stat: parseDiffStat(out) };
   }
 
-  // 2. tests
+  // 3. tests
   if (TEST_CMD.test(cmd)) {
     const counts = parseTestOutput(out);
     if (counts) {
@@ -100,51 +120,111 @@ function classifyBash(cmd, out = '', ok = true) {
     }
   }
 
-  // 3. PR create / merge
+  // 4. PR create / merge
   let m = cmd.match(/\bgh\s+pr\s+(create|merge)\b/);
   if (m) return { kind: m[1] === 'create' ? 'pr-create' : 'pr-merge' };
 
-  // 4. deploy
+  // 5. deploy
   if (/\b(vercel(\s+--prod|\s+deploy)?|netlify\s+deploy|fly\s+deploy|flyctl\s+deploy|wrangler\s+(deploy|publish)|firebase\s+deploy|eb\s+deploy|cdk\s+deploy|kubectl\s+apply|helm\s+(install|upgrade)|cap\s+\S+\s+deploy|serverless\s+deploy|sls\s+deploy|terraform\s+apply)\b/.test(cmd)
       || /\b(npm|yarn|pnpm|make)\s+(run\s+)?deploy\b/.test(cmd)
       || /\bgit\s+push\s+(heroku|dokku)\b/.test(cmd)) {
     return { kind: 'deploy' };
   }
 
-  // 5. push
+  // 6. release: publishing something the world can install
+  if (/\b(npm|yarn|pnpm|bun)\s+publish\b/.test(cmd)
+      || /\b(cargo\s+publish|gem\s+push|twine\s+upload|poetry\s+publish|gh\s+release\s+create|goreleaser\s+release)\b/.test(cmd)
+      || /\bgit\s+tag\s+(-a\s+)?v?\d/.test(cmd)) {
+    return { kind: 'release' };
+  }
+
+  // 7. force push — history under the feet of whoever already pulled
+  if (/\bgit\s+push\b[^|;&]*(--force\b|--force-with-lease\b|\s-f\b)/.test(cmd)) {
+    return { kind: 'force-push' };
+  }
+
+  // 8. push
   if (/\bgit\s+push\b/.test(cmd)) return { kind: 'push' };
 
-  // 6. merge / rebase
+  // 9. merge / rebase
   if (/\bgit\s+(merge|rebase)\b/.test(cmd)) return { kind: 'merge' };
 
-  // 7. installs
+  // 10. hard reset — the other way to lose work
+  if (/\bgit\s+reset\b[^|;&]*--hard\b/.test(cmd)) return { kind: 'reset-hard' };
+
+  // 11. revert
+  if (/\bgit\s+revert\b/.test(cmd)) return { kind: 'revert' };
+
+  // 12. clone
+  if (/\bgit\s+clone\b/.test(cmd)) return { kind: 'clone' };
+
+  // 13. reading a diff — the pet's favourite snack
+  if (/\bgit\s+(diff|show)\b/.test(cmd)) return { kind: 'diff', stat: parseDiffStat(out) };
+
+  // 14. just looking around
+  if (/\bgit\s+(status|log|blame|remote|reflog)\b/.test(cmd)) return { kind: 'inspect' };
+
+  // 15. installs
   if (/\b(npm|pnpm|yarn|bun)\s+(i|install|add)\b/.test(cmd)
       || /\bpip3?\s+install\b/.test(cmd)
       || /\b(cargo\s+add|gem\s+install|brew\s+install|composer\s+(install|require)|go\s+get|uv\s+(pip\s+install|add)|poetry\s+add)\b/.test(cmd)) {
     return { kind: 'install' };
   }
 
-  // 8. new branch
+  // 16. new branch
   if (/\bgit\s+(checkout\s+-b|switch\s+(-c|--create))\b/.test(cmd)
       || /\bgit\s+branch\s+(?!-)[^\s-]/.test(cmd)) {
     return { kind: 'branch' };
   }
 
-  // 9. stash
+  // 17. stash
   if (/\bgit\s+stash\b/.test(cmd)) return { kind: 'stash' };
 
-  // 10. rm -rf
+  // 18. rm -rf
   if (/\brm\s+(-\w*[rR]\w*[fF]|-\w*[fF]\w*[rR])\b/.test(cmd) || /\brm\s+-\w*[rR]\w*\s+-\w*[fF]\w*\b/.test(cmd)) {
     return { kind: 'rm-rf' };
   }
 
-  // 11. build
+  // 19. killing something
+  if (/\b(kill|pkill|killall)\s+/.test(cmd)) return { kind: 'kill' };
+
+  // 20. containers
+  if (/\b(docker|docker-compose|podman|nerdctl)\s+\w/.test(cmd)) return { kind: 'docker' };
+
+  // 21. database migrations
+  if (/\b(prisma\s+migrate|alembic\s+(upgrade|downgrade)|knex\s+migrate|drizzle-kit\s+(push|migrate|generate)|sequelize\s+db:migrate|rails\s+db:migrate|manage\.py\s+migrate|goose\s+up|atlas\s+migrate|flyway\s+migrate)\b/.test(cmd)
+      || /\b(npm|yarn|pnpm|bun)\s+(run\s+)?(db:)?migrate\b/.test(cmd)) {
+    return { kind: 'migrate' };
+  }
+
+  // 22. tidying: linters and formatters
+  if (/\b(eslint|prettier|biome|ruff|black|isort|gofmt|goimports|golangci-lint|rubocop|standardrb|stylelint|dprint|cargo\s+(fmt|clippy))\b/.test(cmd)
+      || /\b(npm|yarn|pnpm|bun)\s+(run\s+)?(lint|format|fmt)\b/.test(cmd)) {
+    return { kind: 'lint' };
+  }
+
+  // 23. type checking (before build: `tsc --noEmit` builds nothing)
+  if (/\b(tsc\s+--noEmit|mypy|pyright|flow\s+check|dotnet\s+build\s+--no-restore)\b/.test(cmd)
+      || /\b(npm|yarn|pnpm|bun)\s+(run\s+)?(typecheck|type-check|tsc)\b/.test(cmd)) {
+    return { kind: 'typecheck' };
+  }
+
+  // 24. build
   if (/\b(npm|yarn|pnpm|bun)\s+(run\s+)?build\b/.test(cmd)
       || /\b(cargo\s+build|go\s+build|tsc\b|webpack|vite\s+build|next\s+build|esbuild|rollup|make(\s+\w+)?$|gradle(w)?\s+(build|assemble)|mvn\s+(package|install)|xcodebuild|swift\s+build)\b/.test(cmd.trim())) {
     return { kind: 'build' };
   }
 
+  // 25. rummaging through the codebase
+  if (/\b(rg|ag|ack|grep|egrep|fgrep|fd|find)\s+/.test(cmd)) return { kind: 'search' };
+
+  // 26. reaching out to the network
+  if (/\b(curl|wget|http|https|xh)\s+/.test(cmd)) return { kind: 'net' };
+
+  // 27. nothing else claimed it, but it asked for root
+  if (/(^|[|;&]\s*)sudo\s+/.test(cmd)) return { kind: 'sudo' };
+
   return null;
 }
 
-module.exports = { classifyBash, parseTestOutput };
+module.exports = { classifyBash, parseTestOutput, parseDiffStat };

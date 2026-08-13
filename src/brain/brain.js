@@ -219,6 +219,8 @@ class Brain extends EventEmitter {
       facts.push(`${worst.project} ctx ~${Math.round(worst.pct * 100)}%`);
       facts.push(`${sum.count} session${sum.count === 1 ? '' : 's'} live rn`);
     }
+    const todo = this.freshTodos(now);
+    if (todo) facts.push(`${todo.d}/${todo.n} todos done so far`);
     const burnT = this.sessions.burnTokens(now);
     if (burnT > 0) facts.push(`${this.sessions.burnLabel(now)} tokens out in 5h`);
     if (this.state.lifetimeCommits > 0) facts.push(`${this.state.lifetimeCommits} commits fed to me so far`);
@@ -401,9 +403,34 @@ class Brain extends EventEmitter {
           rmRf: { t: 'PostToolUse', tool: 'Bash', cmd: 'rm -rf node_modules' },
           toolFail: { t: 'PostToolUse', tool: 'Read', ok: false },
           notification: { t: 'Notification', msg: 'Claude needs your permission to use Bash' },
+          waiting: { t: 'Notification', msg: 'Claude is waiting for your input' },
           sessionStart: { t: 'SessionStart' },
           sessionEnd: { t: 'SessionEnd' },
-          preCompact: { t: 'PreCompact' }
+          preCompact: { t: 'PreCompact' },
+          // --- the detail-rich ones
+          feast: { t: 'PostToolUse', tool: 'Edit', file: 'big.ts', ext: 'ts', add: 61, del: 18 },
+          tinyEdit: { t: 'PostToolUse', tool: 'Edit', file: 'tiny.js', ext: 'js', add: 1, del: 1 },
+          testFile: { t: 'PostToolUse', tool: 'Write', file: 'pet.test.js', ext: 'js', add: 12, del: 0 },
+          gitDiff: { t: 'PostToolUse', tool: 'Bash', cmd: 'git diff --stat', out: ' 3 files changed, 48 insertions(+), 12 deletions(-)' },
+          commitStat: { t: 'PostToolUse', tool: 'Bash', cmd: 'git commit -m "x"', out: '[main 1a2b3c4] x\n 2 files changed, 30 insertions(+), 4 deletions(-)' },
+          todos: { t: 'PostToolUse', tool: 'TodoWrite', todo: { n: 5, d: 2, p: 1 } },
+          todosDone: { t: 'PostToolUse', tool: 'TodoWrite', todo: { n: 5, d: 5, p: 0 } },
+          dispatch: { t: 'PreToolUse', tool: 'Task', agent: 'Explore' },
+          subagentBack: { t: 'PostToolUse', tool: 'Task', agent: 'Explore' },
+          webFetch: { t: 'PostToolUse', tool: 'WebFetch', host: 'docs.claude.com' },
+          mcpCall: { t: 'PostToolUse', tool: 'mcp__sanity__query', srv: 'sanity' },
+          forcePush: { t: 'PostToolUse', tool: 'Bash', cmd: 'git push --force origin main' },
+          resetHard: { t: 'PostToolUse', tool: 'Bash', cmd: 'git reset --hard HEAD~1' },
+          release: { t: 'PostToolUse', tool: 'Bash', cmd: 'npm publish' },
+          docker: { t: 'PostToolUse', tool: 'Bash', cmd: 'docker compose up -d' },
+          lint: { t: 'PostToolUse', tool: 'Bash', cmd: 'npm run lint' },
+          migrate: { t: 'PostToolUse', tool: 'Bash', cmd: 'prisma migrate dev' },
+          bigPrompt: { t: 'UserPromptSubmit', plen: 900 },
+          // Mode changes only fire on a CHANGE, so these two demo each other.
+          modePlan: { t: 'PostToolUse', tool: 'Read', pm: 'plan' },
+          modeNormal: { t: 'PostToolUse', tool: 'Read', pm: 'default' },
+          resume: { t: 'SessionStart', source: 'resume' },
+          compactAuto: { t: 'PreCompact', trigger: 'auto' }
         };
         const preset = presets[cmd.name];
         if (!preset) { result = { ok: false, reason: 'unknown event preset' }; break; }
@@ -458,15 +485,27 @@ class Brain extends EventEmitter {
     return 'grumpy';
   }
 
+  /** Claude's own todo list, while it's still current. Null once finished. */
+  freshTodos(now) {
+    const t = this.state.todos;
+    if (!t || !t.n || !t.at) return null;
+    if (now - t.at > TUNING.todoFreshMs) return null;  // stale is not telemetry
+    if (t.d >= t.n) return null;                       // a done list isn't progress
+    return t;
+  }
+
   statsLine(now) {
     if (!this.prefs.statsLine) return { mode: 'hidden', text: '', strip: [] };
     const s = this.state;
     const idPart = `${this.prefs.name} lv.${s.level}`;
+    const todo = this.freshTodos(now);
+    const todoPart = todo ? ` │ ☑ ${todo.d}/${todo.n}` : '';
     const sum = this.sessions.summary(now);
-    if (sum.count === 0) return { mode: 'idle', text: idPart, strip: [] };
+    if (sum.count === 0) return { mode: 'idle', text: idPart + todoPart, strip: [] };
 
     let text = `${idPart} │ ${sum.count} session${sum.count === 1 ? '' : 's'} │ ctx ~${Math.round(sum.worstPct * 100)}% │ ${sum.burn}/5h`;
     if (s.greenStreak > 0) text += ` │ ✓×${s.greenStreak}`;
+    text += todoPart;
     const strip = sum.count > 1
       ? sum.sessions.slice(0, 3).map(x => `${x.project} ~${Math.round(x.pct * 100)}%`)
       : [];

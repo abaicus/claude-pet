@@ -84,6 +84,14 @@ const TUNING = {
   foodPerPrompt: 6,
   foodPerEdit: 4,
   xpPerEdit: 6,
+  feastLines: 40,             // lines an edit must carry to count as a feast
+  feastFood: 6,               // …and the extra food it's worth
+  longPromptLen: 600,         // characters; a big ask is a big meal
+  longPromptFood: 4,
+  shortPromptLen: 24,
+  todoXp: 3,                  // one of Claude's todo boxes ticked
+  todoDoneXp: 15,             // …the whole list finished
+  todoFreshMs: 15 * 60 * 1000, // stats line stops showing a stale todo list
   commit: { food: 10, mood: 15, xp: 25 },
   testsGreenXp: 20,
   testsRedMood: -10,
