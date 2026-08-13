@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  /* Same pixel language as the speech bubble: cream card, hard border, hard
+     shadow. The window itself is transparent, so the card floats. */
+  html, body {
+    margin: 0;
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: #2b2b2b;
+  }
+  #card {
+    margin: 4px 8px 8px 4px;
+    background: #fffef2;
+    border: 3px solid #2b2b2b;
+    box-shadow: 4px 4px 0 #2b2b2b;
+  }
+  /* Unlike the pet window, this one has normal-flow elements with real height,
+     so a CSS drag region genuinely works here. */
+  #titlebar {
+    -webkit-app-region: drag;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    background: #2b2b2b;
+    color: #fffef2;
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+  #close {
+    -webkit-app-region: no-drag;
+    cursor: pointer;
+    border: 2px solid #fffef2;
+    padding: 0 5px;
+    line-height: 14px;
+    font-size: 11px;
+  }
+  #close:hover { background: #fffef2; color: #2b2b2b; }
+  .section { padding: 8px 12px 2px; }
+  .label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    margin-bottom: 5px;
+    opacity: 0.65;
+  }
+  input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    border: 2px solid #2b2b2b;
+    background: #fff;
+    padding: 4px 6px;
+    font: inherit;
+    font-size: 12px;
+    outline: none;
+  }
+  #palettes, #accessories { display: flex; gap: 6px; flex-wrap: wrap; }
+  .swatch {
+    width: 40px;
+    height: 22px;
+    display: flex;
+    border: 2px solid #2b2b2b;
+    cursor: pointer;
+    padding: 1px;
+    background: #fff;
+  }
+  .swatch div { flex: 1; }
+  .swatch.on { outline: 3px solid #2b2b2b; outline-offset: 1px; }
+  .chip {
+    border: 2px solid #2b2b2b;
+    background: #fff;
+    padding: 3px 8px;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .chip.on { background: #2b2b2b; color: #fffef2; }
+  .chip:disabled { opacity: 0.45; cursor: default; }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    margin: 4px 0;
+  }
+  input[type="checkbox"] { accent-color: #2b2b2b; margin: 0; }
+  input[type="range"] { flex: 1; accent-color: #2b2b2b; margin: 0; }
+  #volPct, #scalePct { font-size: 10px; min-width: 34px; text-align: right; }
+  #hint {
+    padding: 7px 12px 9px;
+    font-size: 9px;
+    letter-spacing: 1px;
+    opacity: 0.55;
+  }
+</style>
+</head>
+<body>
+<div id="card">
+  <div id="titlebar"><span>CLAUDE-PET SETTINGS</span><span id="close">✕</span></div>
+
+  <div class="section">
+    <div class="label">NAME</div>
+    <input id="name" type="text" maxlength="12" placeholder="name me!" spellcheck="false" />
+  </div>
+
+  <div class="section">
+    <div class="label">PALETTE</div>
+    <div id="palettes"></div>
+  </div>
+
+  <div class="section">
+    <div class="label">ACCESSORY</div>
+    <div id="accessories"></div>
+  </div>
+
+  <div class="section">
+    <div class="label">SIZE</div>
+    <div class="row"><input id="scale" type="range" step="5" /><span id="scalePct"></span></div>
+    <button id="resetWin" class="chip">reset size &amp; position</button>
+  </div>
+
+  <div class="section">
+    <div class="label">SHOW</div>
+    <label class="row"><input id="showBubble" type="checkbox" /> speech bubble</label>
+    <label class="row"><input id="showStats" type="checkbox" /> stats line</label>
+    <label class="row"><input id="showGlow" type="checkbox" /> glow</label>
+  </div>
+
+  <div class="section">
+    <div class="label">SOUND</div>
+    <label class="row"><input id="sound" type="checkbox" /> level-up sounds</label>
+    <div class="row">vol <input id="volume" type="range" min="0" max="100" step="5" /><span id="volPct"></span></div>
+  </div>
+
+  <div id="hint">changes apply instantly · esc closes</div>
+</div>
+
+<script>
+const { ipcRenderer } = require("electron");
+
+// The pet renderer is the only writer of state.json. This page just displays
+// the state it broadcasts and sends back patches; the echo after each patch
+// keeps the controls honest (level locks included).
+let st = null;
+const $ = (id) => document.getElementById(id);
+const set = (patch) => ipcRenderer.send("custom-set", patch);
+
+function render() {
+  if (!st) return;
+  const c = st.custom;
+
+  if (document.activeElement !== $("name")) $("name").value = c.name || "";
+
+  const pal = $("palettes");
+  pal.innerHTML = "";
+  for (const [id, colors] of Object.entries(st.palettes)) {
+    const sw = document.createElement("div");
+    sw.className = "swatch" + (c.palette === id ? " on" : "");
+    sw.title = id;
+    for (const col of colors) {
+      const band = document.createElement("div");
+      band.style.background = col;
+      sw.appendChild(band);
+    }
+    sw.onclick = () => set({ palette: id });
+    pal.appendChild(sw);
+  }
+
+  const acc = $("accessories");
+  acc.innerHTML = "";
+  for (const a of st.accessories) {
+    const b = document.createElement("button");
+    b.className = "chip" + (c.accessory === a.id ? " on" : "");
+    const locked = st.level < a.lv;
+    b.textContent = locked ? `${a.label} 🔒lv.${a.lv}` : a.label;
+    b.disabled = locked;
+    b.onclick = () => set({ accessory: a.id });
+    acc.appendChild(b);
+  }
+
+  $("showBubble").checked = c.showBubble !== false;
+  $("showStats").checked = c.showStats !== false;
+  $("showGlow").checked = c.showGlow !== false;
+  $("sound").checked = !!st.sound;
+  $("volume").value = c.volume;
+  $("volPct").textContent = c.volume + "%";
+
+  // window scale is main's domain (window.json), merged into the payload
+  if (document.activeElement !== $("scale")) {
+    $("scale").min = Math.round(st.scaleMin * 100);
+    $("scale").max = Math.round(st.scaleMax * 100);
+    $("scale").value = Math.round(st.scale * 100);
+    $("scalePct").textContent = Math.round(st.scale * 100) + "%";
+  }
+}
+
+ipcRenderer.on("pet-state", (_e, next) => {
+  st = next;
+  render();
+});
+ipcRenderer.send("pet-state-get");
+
+$("name").addEventListener("input", () => set({ name: $("name").value }));
+$("showBubble").addEventListener("change", () => set({ showBubble: $("showBubble").checked }));
+$("showStats").addEventListener("change", () => set({ showStats: $("showStats").checked }));
+$("showGlow").addEventListener("change", () => set({ showGlow: $("showGlow").checked }));
+$("sound").addEventListener("change", () => set({ sound: $("sound").checked }));
+$("volume").addEventListener("input", () => {
+  $("volPct").textContent = $("volume").value + "%";
+  set({ volume: Number($("volume").value) });
+});
+
+$("scale").addEventListener("input", () => {
+  $("scalePct").textContent = $("scale").value + "%";
+  ipcRenderer.send("pet-scale", Number($("scale").value) / 100);
+});
+$("resetWin").addEventListener("click", () => ipcRenderer.send("pet-reset-window"));
+
+$("close").addEventListener("click", () => ipcRenderer.send("settings-close"));
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") ipcRenderer.send("settings-close");
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  /* No -webkit-app-region here on purpose — see the dragging block in the
+     script. Everything is absolutely positioned, so the body it would have
+     been attached to is a zero-height box. */
+  #stage { cursor: grab; }
+  body.dragging, body.dragging #stage { cursor: grabbing; }
+  /* Visibility on any wallpaper: a rim light that hugs the sprite's actual
+     silhouette, plus a soft ground shadow. (A big radial cloud behind the
+     body just smeared gray over dark wallpapers.) */
+  body.glow #stage {
+    filter: drop-shadow(0 0 5px rgba(255, 255, 250, 0.55)) drop-shadow(0 0 1px rgba(255, 255, 250, 0.4));
+  }
+  #ground {
+    position: absolute;
+    bottom: 36px; /* straddles the feet line */
+    left: 50%;
+    width: 130px;
+    height: 20px;
+    margin-left: -65px;
+    background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.32), transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  #bubble {
+    position: absolute;
+    /* Above the character: bottom-anchored just over the wizard-hat zone, so
+       a long message grows UPWARD and never covers the pet. (top:6px floated
+       it in empty sky; bottom:20px sat it on the pet's feet — this tracks the
+       head instead.) */
+    bottom: 212px;
+    left: 50%;
+    transform: translateX(-50%);
+    /* width:max-content is load-bearing — an abspos box at left:50% otherwise
+       shrinks to the 110px between it and the window edge, and max-width never
+       gets a say. That wraps short notices into five clipped lines. */
+    width: max-content;
+    max-width: 200px;
+    /* the window is short: cap at 3 lines rather than overflow into nothing,
+       and stay clear of the wizard hat below */
+    max-height: 3.2em;
+    overflow: hidden;
+    padding: 5px 9px;
+    background: #fffef2;
+    border: 3px solid #2b2b2b;
+    border-radius: 2px;
+    box-shadow: 3px 3px 0 #2b2b2b;
+    font-size: 11px;
+    line-height: 1.3;
+    color: #2b2b2b;
+    white-space: normal;
+    text-align: center;
+    opacity: 0;
+    transition: opacity 0.15s steps(3);
+    pointer-events: none;
+    z-index: 3; /* the canvas is later in the DOM and would paint over it */
+  }
+  #bubble.show { opacity: 1; }
+  #stage {
+    position: absolute;
+    bottom: 26px;
+    left: 50%;
+    transform: translateX(-50%);
+    image-rendering: pixelated;
+    z-index: 1;
+  }
+  #stats {
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #fffef2;
+    text-shadow: 1px 1px 0 #2b2b2b, -1px 1px 0 #2b2b2b, 1px -1px 0 #2b2b2b, -1px -1px 0 #2b2b2b;
+    white-space: nowrap;
+  }
+  /* Everything the pet is made of lives in here and scales as one unit. The
+     box is the unscaled base size, anchored to the window's bottom centre, so
+     scaling about that origin makes it fill the resized window exactly. */
+  #pet {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 220px;
+    height: 280px;
+    margin-left: -110px;
+    transform-origin: bottom center;
+  }
+</style>
+</head>
+<body>
+<div id="pet">
+  <div id="ground"></div>
+  <div id="bubble"></div>
+  <canvas id="stage" width="160" height="200"></canvas>
+  <div id="stats"></div>
+</div>
+
+<script>
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const { ipcRenderer } = require("electron");
+
+window.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  ipcRenderer.send("pet-menu");
+});
+
+ipcRenderer.on("pet-notice", (_e, text) => say(text, true));
+
+/* ---------- dragging ---------- */
+// `-webkit-app-region: drag` was on the body, but every element in this window
+// is absolutely positioned, so that body is a zero-height box and the drag
+// region had no area — the pet couldn't be picked up at all. Moving the window
+// from JS sidesteps that, and app-region's trouble with transformed elements
+// (#pet is one now that it scales).
+//
+// We only say when a drag starts and stops; main follows the OS cursor from
+// there, so tracking keeps working even when you fling the pet fast enough to
+// leave the cursor outside the window.
+let drag = false;
+let down = null; // where/when the button went down, to tell a pet from a drag
+
+document.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return; // leave right-click to the context menu
+  down = { t: Date.now(), x: e.screenX, y: e.screenY };
+  walking = 0; // a hand on the pet ends a stroll (main stops moving the window)
+  drag = true;
+  document.body.classList.add("dragging");
+  ipcRenderer.send("pet-drag-start");
+});
+
+function endDrag() {
+  if (!drag) return;
+  drag = false;
+  document.body.classList.remove("dragging");
+  ipcRenderer.send("pet-drag-end");
+}
+document.addEventListener("mouseup", (e) => {
+  // A release that barely moved was never a drag — it was a pet. The drag
+  // machinery ran anyway, harmlessly: a stationary cursor moves nothing.
+  const wasPet =
+    down && Date.now() - down.t < 350 &&
+    Math.abs(e.screenX - down.x) + Math.abs(e.screenY - down.y) < 5;
+  down = null;
+  endDrag();
+  if (wasPet) petted();
+});
+window.addEventListener("blur", endDrag); // button released outside the window
+
+/* ---------- petting & treats ---------- */
+const PET_COOLDOWN = 2500; // hearts every time, xp farming never
+const TREAT_COOLDOWN = 5 * 60e3; // per run — a restart refills the cookie jar
+let lastPet = 0;
+let lastTreat = 0;
+
+function petted() {
+  const now = Date.now();
+  play("love", 1800);
+  if (now - lastPet < PET_COOLDOWN) return;
+  lastPet = now;
+  S.mood = clamp(S.mood + 4);
+  S.xp += 1;
+  // a petted pet is a chatty pet — this is where session gossip comes out
+  const fact = Math.random() < 0.45 ? sessionFact() : null;
+  say(fact || pick(QUIPS.pet));
+  save();
+}
+
+document.addEventListener("dblclick", () => {
+  const now = Date.now();
+  if (now - lastTreat < TREAT_COOLDOWN) {
+    play("happy", 1500);
+    say(pick(QUIPS.notreat));
+    return;
+  }
+  lastTreat = now;
+  S.hunger = clamp(S.hunger - 12);
+  S.mood = clamp(S.mood + 6);
+  S.xp += 2;
+  play("eat", 2200);
+  say(pick(QUIPS.treat));
+  save();
+});
+
+/* ---------- scale ---------- */
+// The size slider lives in the settings window; main owns the window size and
+// tells us what to render at.
+const petBox = document.getElementById("pet");
+const applyScale = (s) => { petBox.style.transform = "scale(" + s + ")"; };
+ipcRenderer.on("pet-init", (_e, cfg) => applyScale(cfg.scale));
+ipcRenderer.on("pet-scale-set", (_e, s) => applyScale(s));
+
+const DIR = path.join(os.homedir(), ".claude-pet");
+const EVENTS = path.join(DIR, "events.jsonl");
+const STATE = path.join(DIR, "state.json");
+fs.mkdirSync(DIR, { recursive: true });
+
+/* ---------- state ---------- */
+let S = {
+  xp: 0, hunger: 30, energy: 80, mood: 70,
+  commits: 0, fails: 0, greens: 0, reds: 0,
+  sound: false, offset: 0, lastEvent: Date.now(),
+};
+try { S = { ...S, ...JSON.parse(fs.readFileSync(STATE)) }; } catch (e) {}
+
+/* ---------- customization ---------- */
+const CUSTOM_DEFAULTS = {
+  name: "", palette: "classic", accessory: "none",
+  showBubble: true, showStats: true, showGlow: true, volume: 60,
+};
+S.custom = { ...CUSTOM_DEFAULTS, ...(S.custom || {}) };
+
+// Four colors per palette = stages 1..4, so evolution still reads as growth
+// whatever you pick. The egg stays eggshell — an egg is an egg.
+const PALETTES = {
+  classic: ["#a8e6cf", "#8bc34a", "#64b5f6", "#b39ddb"],
+  mint:    ["#c8f7dc", "#a8e6cf", "#69d2a3", "#3bb08f"],
+  pink:    ["#ffd3e0", "#f8a5c2", "#f06292", "#c2559d"],
+  blue:    ["#c5e8ff", "#90caf9", "#64b5f6", "#5c6bc0"],
+  gold:    ["#ffe9a8", "#ffd54f", "#ffb300", "#ff8f00"],
+  ghost:   ["#f4f4f4", "#e0e0e6", "#c9c9d4", "#aeaec0"],
+};
+// lv gates make accessories double as progression rewards
+const ACCESSORIES = [
+  { id: "none",   label: "none",   lv: 0 },
+  { id: "bow",    label: "bow",    lv: 1 },
+  { id: "sprout", label: "sprout", lv: 2 },
+  { id: "scarf",  label: "scarf",  lv: 3 },
+];
+
+const IDLE_MS = 60e3; // "you've actually stopped working" threshold
+const save = () => { try { fs.writeFileSync(STATE, JSON.stringify(S)); } catch (e) {} };
+const clamp = (v) => Math.max(0, Math.min(100, v));
+
+const STAGES = [
+  { xp: 0,    name: "egg",       body: "#e8dcc0" },
+  { xp: 50,   name: "hatchling", body: "#a8e6cf" },
+  { xp: 250,  name: "junior",    body: "#8bc34a" },
+  { xp: 1000, name: "senior",    body: "#64b5f6" },
+  { xp: 3000, name: "wizard",    body: "#b39ddb" },
+];
+const stage = () => STAGES.filter((s) => S.xp >= s.xp).pop();
+const level = () => STAGES.indexOf(stage());
+const bodyColor = () => {
+  if (level() === 0) return STAGES[0].body; // an egg is an egg, whatever the palette
+  const ramp = PALETTES[S.custom.palette] || PALETTES.classic;
+  return ramp[level() - 1];
+};
+
+/* ---------- animation state machine ---------- */
+// anim: { name, until } — falls back to mood idle when expired
+let anim = { name: "idle", until: 0 };
+const play = (name, ms) => { anim = { name, until: Date.now() + ms }; };
+
+const bubble = document.getElementById("bubble");
+let bubbleTimer;
+// `important` bypasses the bubble toggle: click-through instructions and
+// context warnings must land even when quips are hidden.
+function say(text, important) {
+  if (!S.custom.showBubble && !important) return;
+  bubble.textContent = text;
+  bubble.classList.add("show");
+  clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => bubble.classList.remove("show"), 4000);
+}
+
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const QUIPS = {
+  commit: ["yum, a commit!", "shipped ✓ nom nom", "commit acquired"],
+  fail: ["ouch...", "we don't talk about that one", "*sulks*"],
+  eat: ["nom nom", "tasty diff", "*munch*"],
+  wake: ["let's cook", "back to work?", "good morning!"],
+  rest: ["gg", "*stretches*", "nice turn"],
+  levelup: ["I EVOLVED!!", "behold my new form"],
+  green: ["all green ✓", "suite's clean!", "not one red"],
+  red: ["tests are crying", "red... so red", "*hides*"],
+  pet: ["hehe", "*purrs*", "scritches!!", "more pets pls"],
+  treat: ["*CRUNCH*", "cookie!!", "snack time ♡"],
+  notreat: ["not hungry rn", "*saves it for later*", "cookie jar's empty"],
+};
+
+/* ---------- sound (off by default, toggled from the right-click menu) ---------- */
+// Synthesized square waves — no asset files, keeps the zero-dependency rule.
+let audio = null;
+function beep(seq) {
+  if (!S.sound || !S.custom.volume) return;
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === "suspended") audio.resume();
+    let t = audio.currentTime + 0.01;
+    for (const [freq, dur] of seq) {
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      osc.type = "square"; // chiptune, obviously
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.001 * S.custom.volume, t); // 60% ≈ the old fixed level
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(gain).connect(audio.destination);
+      osc.start(t);
+      osc.stop(t + dur);
+      t += dur;
+    }
+  } catch (e) {}
+}
+const SOUNDS = {
+  levelup: [[523, 0.09], [659, 0.09], [784, 0.09], [1047, 0.24]],
+  green:   [[784, 0.08], [1047, 0.16]],
+  commit:  [[659, 0.07], [880, 0.14]],
+  red:     [[330, 0.12], [247, 0.22]],
+};
+
+ipcRenderer.on("pet-sound", (_e, on) => {
+  S.sound = !!on;
+  save();
+  pushState();
+  say(S.sound ? "sound on ♪" : "sound off");
+  beep(SOUNDS.green);
+});
+
+/* ---------- settings sync ---------- */
+// This renderer owns state.json; main mirrors what we broadcast to the menu
+// checkbox and the settings window. The payload is self-describing (palettes,
+// accessory locks) so the settings page ships no duplicate data.
+function pushState() {
+  ipcRenderer.send("pet-state", {
+    sound: S.sound,
+    level: level(),
+    custom: S.custom,
+    palettes: PALETTES,
+    accessories: ACCESSORIES,
+  });
+}
+pushState();
+
+const statsEl = document.getElementById("stats");
+const groundEl = document.getElementById("ground");
+const applyVisibility = () => {
+  statsEl.style.display = S.custom.showStats ? "" : "none";
+  const glowOn = S.custom.showGlow !== false;
+  document.body.classList.toggle("glow", glowOn); // rim light on the canvas
+  groundEl.style.display = glowOn ? "" : "none";
+};
+applyVisibility();
+
+let lastBeepPreview = 0;
+ipcRenderer.on("pet-custom-set", (_e, patch) => {
+  const p = { ...(patch || {}) };
+  const hadSound = S.sound;
+  const hadVol = S.custom.volume;
+  if (typeof p.sound === "boolean") {
+    S.sound = p.sound; // lives beside custom in S, not inside it
+    delete p.sound;
+  }
+  if (typeof p.name === "string") p.name = p.name.slice(0, 12);
+  if ("palette" in p && !PALETTES[p.palette]) delete p.palette;
+  if ("accessory" in p) {
+    const a = ACCESSORIES.find((x) => x.id === p.accessory);
+    if (!a || level() < a.lv) delete p.accessory; // no picking locks from the page
+  }
+  if ("volume" in p) p.volume = clamp(Number(p.volume) || 0);
+  Object.assign(S.custom, p);
+  applyVisibility();
+  // hear what you just dialed in (throttled — the slider streams changes)
+  if (S.sound && (!hadSound || S.custom.volume !== hadVol) && Date.now() - lastBeepPreview > 400) {
+    lastBeepPreview = Date.now();
+    beep(SOUNDS.green);
+  }
+  save();
+  pushState(); // echo, so the settings page always shows what actually stuck
+});
+
+/* ---------- test-run awareness ---------- */
+const TEST_CMDS = [
+  /\b(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?tests?\b/i,
+  /\bnpx?\s+(?:jest|vitest|mocha|ava|tap|uvu|playwright\s+test|cypress\s+run)\b/i,
+  /\b(?:jest|vitest|mocha)\b/i,
+  /\b(?:pytest|py\.test|tox|nose2)\b/i,
+  /\bpython3?\s+-m\s+(?:pytest|unittest)\b/i,
+  /\bgo\s+test\b/i,
+  /\bcargo\s+(?:test|nextest)\b/i,
+  /\b(?:rspec|minitest)\b/i,
+  /\b(?:rake|bundle\s+exec\s+rake)\s+test\b/i,
+  /\bphpunit\b/i,
+  /\b(?:mvn|gradlew|gradle|ant)\b[^\n]*\btest\b/i,
+  /\bdotnet\s+test\b/i,
+  /\bswift\s+test\b/i,
+  /\bmix\s+test\b/i,
+  /\bctest\b/i,
+];
+const isTestCmd = (cmd) => TEST_CMDS.some((re) => re.test(cmd || ""));
+
+// Best-effort tally across the common runners. Returns nulls when it can't tell.
+function parseTests(text) {
+  const out = String(text || "");
+  let passed = null, failed = null, m;
+
+  // jest "Tests:  1 failed, 12 passed, 13 total" / vitest "Tests  12 passed (12)".
+  // Requiring a digit after the label keeps jest's "Test Suites:" line out of it.
+  if ((m = out.match(/^[ \t]*Tests?[ \t]*:?[ \t]+(\d[^\n]*)$/im))) {
+    const f = m[1].match(/(\d+)\s+failed/i);
+    const p = m[1].match(/(\d+)\s+passed/i);
+    if (f) failed = +f[1];
+    if (p) passed = +p[1];
+    // These runners omit the zero side, so an absent count really is zero.
+    // Pinning it also stops the loose fallbacks below from grabbing a stray
+    // number out of unrelated earlier output.
+    if (failed === null && passed !== null) failed = 0;
+    if (passed === null && failed !== null) passed = 0;
+  }
+  // rust: "test result: ok. 12 passed; 0 failed"
+  if ((m = out.match(/test result:.*?(\d+)\s+passed;\s*(\d+)\s+failed/i))) {
+    passed = +m[1];
+    failed = +m[2];
+  }
+  // pytest and friends: "==== 2 failed, 10 passed in 0.42s ===="
+  if (failed === null && (m = out.match(/(\d+)\s+failed/i))) failed = +m[1];
+  if (passed === null && (m = out.match(/(\d+)\s+passed/i))) passed = +m[1];
+
+  let ok = null;
+  if (failed !== null) ok = failed === 0;
+  else if (/(^|\s)(FAIL|FAILED|panic:|Traceback|✗|✘)/m.test(out)) ok = false;
+  else if (passed !== null || /(^|\s)(PASS|ok\s|✓)/m.test(out)) ok = true;
+  return { passed, failed, ok };
+}
+
+// exitedOk: PostToolUse means the command exited 0, PostToolUseFailure means it didn't.
+function reactToTestRun(text, exitedOk) {
+  const r = parseTests(text);
+  const green = exitedOk && r.ok !== false;
+  if (green) {
+    S.greens++;
+    S.xp += 20;
+    S.mood = clamp(S.mood + 12);
+    S.hunger = clamp(S.hunger - 10);
+    play("party", 3500);
+    say(r.passed ? `${r.passed} tests green ✓` : pick(QUIPS.green));
+    beep(SOUNDS.green);
+  } else {
+    S.reds++;
+    S.mood = clamp(S.mood - 10);
+    S.energy = clamp(S.energy - 5);
+    play("sad", 3500);
+    say(r.failed ? `${r.failed} test${r.failed === 1 ? "" : "s"} red...` : pick(QUIPS.red));
+    beep(SOUNDS.red);
+  }
+}
+
+/* ---------- event ingestion ---------- */
+function applyEvent(ev) {
+  const t = ev.hook_event_name || "";
+  const tool = ev.tool_name || "";
+  const cmd = ev.command || "";
+  const oldLevel = level();
+  S.lastEvent = Date.now();
+  trackSession(ev);
+
+  if (t === "SessionStart") { S.mood = clamp(S.mood + 10); play("happy", 2500); say(pick(QUIPS.wake)); }
+  else if (t === "UserPromptSubmit") { S.mood = clamp(S.mood + 2); play("happy", 1200); }
+  else if (t === "PostToolUse") {
+    S.xp += 2; S.energy = clamp(S.energy - 1);
+    if (["Edit", "Write", "MultiEdit", "NotebookEdit"].includes(tool)) {
+      S.hunger = clamp(S.hunger - 8); S.xp += 3;
+      play("eat", 2000);
+      if (Math.random() < 0.25) say(pick(QUIPS.eat));
+    }
+    if (tool === "Bash") {
+      if (cmd.includes("git commit")) {
+        S.commits++; S.hunger = clamp(S.hunger - 20); S.mood = clamp(S.mood + 15); S.xp += 25;
+        play("party", 3500); say(pick(QUIPS.commit)); beep(SOUNDS.commit);
+      } else if (isTestCmd(cmd)) {
+        reactToTestRun(ev.output, true);
+      }
+    }
+  }
+  else if (t === "PostToolUseFailure") {
+    S.fails++;
+    if (tool === "Bash" && isTestCmd(cmd)) {
+      reactToTestRun(ev.error || ev.output, false);
+    } else {
+      S.mood = clamp(S.mood - 8); play("sad", 3000); say(pick(QUIPS.fail));
+    }
+  }
+  else if (t === "Stop") { S.xp += 5; S.mood = clamp(S.mood + 3); if (Math.random() < 0.3) say(pick(QUIPS.rest)); }
+  else if (t === "SessionEnd") { S.energy = clamp(S.energy + 20); }
+
+  if (level() > oldLevel) {
+    play("party", 5000); say(pick(QUIPS.levelup)); S.mood = 100; beep(SOUNDS.levelup);
+    pushState(); // a level-up can unlock accessories — tell the settings page
+  }
+}
+
+/* ---------- session awareness (pure) ---------- */
+// The hook hands us session_id / cwd / transcript_path. The APP (never the
+// hook — invariant 1) then reads transcript tails to learn what the pet can
+// honestly claim to know: model, context fullness, token burn. Everything in
+// this block is Node-pure so the test suite can lift and exercise it.
+
+const SESSIONS = new Map(); // session_id → {cwd, transcript, last, ended, tools, tOffset, lastMsgId, ctx, model, warned}
+const BURN = []; // {t, tokens} per assistant message, pruned past the window
+const BURN_WINDOW_MS = 5 * 3600e3; // the shape of Claude's rolling usage window
+const CTX_WINDOW = 200000; // assumed context size — the labels say "~" on purpose
+const SESSION_FRESH_MS = 15 * 60e3;
+
+function trackSession(ev) {
+  if (!ev.session_id) return;
+  const s = SESSIONS.get(ev.session_id) || { tools: 0 };
+  s.cwd = ev.cwd || s.cwd;
+  s.transcript = ev.transcript_path || s.transcript;
+  s.last = Date.now();
+  if (ev.hook_event_name === "PostToolUse") s.tools++;
+  if (ev.hook_event_name === "SessionEnd") s.ended = true;
+  if (ev.hook_event_name === "SessionStart") s.ended = false; // resumed
+  SESSIONS.set(ev.session_id, s);
+}
+
+const activeSessions = () =>
+  [...SESSIONS.values()].filter((s) => !s.ended && Date.now() - s.last < SESSION_FRESH_MS);
+
+const proj = (s) => path.basename(s.cwd || "") || "somewhere";
+
+// One API response spans several transcript lines, each repeating the same
+// usage block — the caller must count each message id once or burn triples.
+function usageFromLine(line) {
+  if (!line.includes('"usage"') || !line.includes('"assistant"')) return null;
+  try {
+    const o = JSON.parse(line);
+    const m = o.message;
+    if (o.type !== "assistant" || !m || !m.usage) return null;
+    const u = m.usage;
+    return {
+      id: m.id || o.requestId || "",
+      t: Date.parse(o.timestamp) || Date.now(),
+      model: m.model || "",
+      ctx: (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0),
+      out: u.output_tokens || 0,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+const fmtTokens = (n) =>
+  n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M"
+  : n >= 1000 ? Math.round(n / 1000) + "k"
+  : String(n);
+
+// "claude-fable-5" → "fable-5", "claude-opus-4-1-20250805" → "opus-4-1"
+const shortModel = (m) => String(m).replace(/^claude-/, "").replace(/-\d{8}$/, "");
+
+/* ---------- session awareness (io) ---------- */
+const TRANSCRIPT_POLL = 15e3;
+
+async function readTranscripts() {
+  for (const s of activeSessions()) {
+    if (!s.transcript) continue;
+    try {
+      const st = await fs.promises.stat(s.transcript);
+      // First sight of a session: start near the end — the pet reports on the
+      // present, not archaeology. (A first partial line just fails to parse.)
+      if (s.tOffset == null || st.size < s.tOffset) s.tOffset = Math.max(0, st.size - 64 * 1024);
+      if (st.size === s.tOffset) continue;
+      const fh = await fs.promises.open(s.transcript, "r");
+      let buf;
+      try {
+        buf = Buffer.alloc(Math.min(st.size - s.tOffset, 4 * 1024 * 1024));
+        await fh.read(buf, 0, buf.length, s.tOffset);
+      } finally {
+        await fh.close();
+      }
+      const cut = buf.lastIndexOf(0x0a);
+      if (cut === -1) continue;
+      s.tOffset += cut + 1;
+      for (const line of buf.slice(0, cut).toString("utf8").split("\n")) {
+        const u = usageFromLine(line);
+        if (!u) continue;
+        s.ctx = u.ctx;
+        s.model = u.model;
+        if (u.id && u.id === s.lastMsgId) continue; // same message, another line
+        s.lastMsgId = u.id;
+        BURN.push({ t: u.t, tokens: u.out });
+      }
+      while (BURN.length && BURN[0].t < Date.now() - BURN_WINDOW_MS) BURN.shift();
+    } catch (e) {} // transcript gone or unreadable — the pet just knows less
+  }
+  contextWarnings();
+}
+setInterval(readTranscripts, TRANSCRIPT_POLL);
+
+// The "tell me before I hit the wall" part: one warning per threshold, armed
+// again once a /compact (or new task) drops the context back down.
+function contextWarnings() {
+  for (const s of activeSessions()) {
+    if (!s.ctx) continue;
+    const pct = Math.round((s.ctx / CTX_WINDOW) * 100);
+    if (pct < 60) s.warned = 0;
+    const tier = pct >= 90 ? 90 : pct >= 75 ? 75 : 0;
+    if (tier && (s.warned || 0) < tier) {
+      s.warned = tier;
+      say(`⚠ context ~${pct}% in ${proj(s)}${tier >= 90 ? " — /compact soon!" : ""}`, tier >= 90);
+      play(tier >= 90 ? "sad" : "happy", 2500);
+    }
+  }
+}
+
+// One nugget of gossip, or null when the pet has nothing worth saying.
+function sessionFact() {
+  const act = activeSessions();
+  const facts = [];
+  if (act.length) {
+    const names = [...new Set(act.map(proj))].slice(0, 3).join(", ");
+    facts.push(act.length === 1 ? `watching ${names}` : `${act.length} sessions: ${names}`);
+    const tools = act.reduce((n, s) => n + s.tools, 0);
+    if (tools > 5) facts.push(`${tools} tool calls watched`);
+  }
+  const busiest = act.filter((s) => s.ctx).sort((a, b) => b.ctx - a.ctx)[0];
+  if (busiest) {
+    facts.push(`context ~${Math.round((busiest.ctx / CTX_WINDOW) * 100)}% in ${proj(busiest)}`);
+    if (busiest.model) facts.push(`${shortModel(busiest.model)} on the case`);
+  }
+  const burned = BURN.reduce((n, b) => n + b.tokens, 0);
+  if (burned > 1000) facts.push(`~${fmtTokens(burned)} tokens out in 5h`);
+  return facts.length ? pick(facts) : null;
+}
+
+// Unprompted gossip: rarely, and only while someone's actually working.
+setInterval(() => {
+  if (Date.now() - S.lastEvent > 20 * 60e3) return; // nobody's here — stay quiet
+  if (S.energy < 20 || Math.random() > 0.35) return;
+  const fact = sessionFact();
+  if (fact) {
+    say(fact);
+    play("happy", 1500);
+  }
+}, 150e3);
+
+/* ---------- tailing + rotation ---------- */
+const LOG_CAP = 512 * 1024; // and again whenever it gets chunky mid-session
+let rotateOnLaunch = true; // clear out whatever queued up while the app was closed
+
+function rotate() {
+  if (!rotateOnLaunch && S.offset < LOG_CAP) return;
+  try {
+    // Only truncate when we have consumed every byte — otherwise a parallel
+    // session appended between our read and now and we would eat its events.
+    if (fs.statSync(EVENTS).size !== S.offset) return;
+    fs.truncateSync(EVENTS, 0);
+    S.offset = 0;
+    rotateOnLaunch = false;
+    save();
+  } catch (e) {}
+}
+
+function poll() {
+  let st;
+  try { st = fs.statSync(EVENTS); } catch (e) { return; } // no events file yet
+  if (st.size < S.offset) S.offset = 0; // file was truncated/rotated under us
+
+  if (st.size > S.offset) {
+    const buf = Buffer.alloc(st.size - S.offset);
+    const fd = fs.openSync(EVENTS, "r");
+    try { fs.readSync(fd, buf, 0, buf.length, S.offset); } finally { fs.closeSync(fd); }
+
+    // A hook may be mid-append: consume only through the last complete line, and
+    // count bytes (not chars) so a split multi-byte char can't drift the offset.
+    const cut = buf.lastIndexOf(0x0a);
+    if (cut === -1) return; // nothing complete yet, try again next tick
+    S.offset += cut + 1;
+    for (const line of buf.slice(0, cut).toString("utf8").split("\n")) {
+      if (!line.trim()) continue;
+      try { applyEvent(JSON.parse(line)); } catch (e) {}
+    }
+    save();
+  }
+  rotate();
+}
+poll(); // catch up on everything queued while the app was closed
+setInterval(poll, 500);
+
+/* passive decay */
+setInterval(() => {
+  S.hunger = clamp(S.hunger + 0.5);
+  const idleMs = Date.now() - S.lastEvent;
+  // Recovers properly while you're away, barely while you're hammering tools.
+  S.energy = clamp(S.energy + (idleMs > IDLE_MS ? 2.5 : 0.3));
+  if (idleMs > 30 * 60e3) S.mood = clamp(S.mood - 0.5);
+  // Sometimes stroll off when you've been away a few minutes. Awake pets only —
+  // main also refuses while dragging, click-through, or settings are up.
+  if (idleMs > 3 * 60e3 && S.energy >= 20 && level() > 0 && Math.random() < 0.07)
+    ipcRenderer.send("pet-wander"); // eggs do not go for walks
+
+  save();
+}, 20e3);
+
+/* ---------- eyes & walking ---------- */
+let cursorAt = null; // offset from window centre in screen px, null = nobody near
+let walking = 0; // -1/1 while main strolls the window along, 0 otherwise
+let glance = { dx: 0, until: 0 }; // idle look-arounds when nobody's pointing at us
+
+ipcRenderer.on("pet-cursor", (_e, c) => { cursorAt = c; });
+ipcRenderer.on("pet-walk", (_e, dir) => {
+  walking = dir | 0;
+  if (walking) play("walk", 60e3); // main says when the stroll is over
+  else if (anim.name === "walk") anim.until = 0;
+});
+
+/* ---------- pixel rendering ---------- */
+const cv = document.getElementById("stage");
+const cx = cv.getContext("2d");
+cx.imageSmoothingEnabled = false;
+const PX = 10; // 16x16 grid
+// Four spare rows above the grid. The blob's crown is grid row 2, so a hat has
+// to be drawn at negative rows to sit ON TOP of the head instead of across it —
+// and the party bob lifts everything another 2 rows. Without the headroom the
+// hat clips straight off the canvas.
+const TOP = 4;
+
+// blob body, '.'=empty, 'B'=body, 'D'=outline
+const BLOB = [
+  "................",
+  "................",
+  "....DDDDDDDD....",
+  "...DBBBBBBBBD...",
+  "..DBBBBBBBBBBD..",
+  ".DBBBBBBBBBBBBD.",
+  ".DBBBBBBBBBBBBD.",
+  ".DBBBBBBBBBBBBD.",
+  ".DBBBBBBBBBBBBD.",
+  ".DBBBBBBBBBBBBD.",
+  ".DBBBBBBBBBBBBD.",
+  "..DBBBBBBBBBBD..",
+  "...DBBBBBBBBD...",
+  "....DDDDDDDD....",
+  "................",
+  "................",
+];
+const EGG = [
+  "................",
+  "................",
+  "................",
+  ".....DDDDDD.....",
+  "....DBBBBBBD....",
+  "...DBBBBBBBBD...",
+  "...DBBBBBBBBD...",
+  "..DBBBBBBBBBBD..",
+  "..DBBBBBBBBBBD..",
+  "..DBBBBBBBBBBD..",
+  "..DBBBBBBBBBBD..",
+  "...DBBBBBBBBD...",
+  "....DBBBBBBD....",
+  ".....DDDDDD.....",
+  "................",
+  "................",
+];
+
+// a hatchling is a much smaller critter, not a shrunken texture
+const SMOL = [
+  "................",
+  "................",
+  "................",
+  "................",
+  "................",
+  "................",
+  "......DDDD......",
+  ".....DBBBBD.....",
+  "....DBBBBBBD....",
+  "...DBBBBBBBBD...",
+  "...DBBBBBBBBD...",
+  "...DBBBBBBBBD...",
+  "....DBBBBBBD....",
+  ".....DDDDDD.....",
+  "................",
+  "................",
+];
+
+// Evolution is a different critter per stage, not a recolor: face geometry and
+// accessory anchors move with the body. `top` = grid row of the head's crown.
+const LAYOUTS = {
+  hatchling: { grid: SMOL, top: 6, eyeXL: 6, eyeXR: 9, eyeY: 9, eyeH: 1, mouthY: 11, blushXL: 4, blushXR: 11, blushY: 10, scarfY: 11, feetXL: 6, feetXR: 9 },
+  default:   { grid: BLOB, top: 2, eyeXL: 5, eyeXR: 10, eyeY: 6, eyeH: 2, mouthY: 10, blushXL: 3, blushXR: 12, blushY: 9, scarfY: 11, feetXL: 5, feetXR: 10 },
+};
+
+const px = (x, y, c) => { cx.fillStyle = c; cx.fillRect(x * PX, (y + TOP) * PX, PX, PX); };
+
+function drawGrid(grid, bodyColor, dy) {
+  for (let y = 0; y < 16; y++)
+    for (let x = 0; x < 16; x++) {
+      const ch = grid[y][x];
+      if (ch === "B") px(x, y + dy, bodyColor);
+      else if (ch === "D") px(x, y + dy, "#2b2b2b");
+    }
+}
+
+let frame = 0;
+function render() {
+  frame++;
+  cx.clearRect(0, 0, cv.width, cv.height);
+  const st = stage();
+  const now = Date.now();
+  let a = now < anim.until ? anim.name : null;
+
+  // fall back to mood idle
+  if (!a) {
+    // Only doze off once you've actually stopped. Gating on energy alone put
+    // the pet to sleep for the whole session, since a busy session drains it
+    // far faster than it recovers — exactly when you want it lively.
+    if (S.energy < 20 && now - S.lastEvent > IDLE_MS) a = "sleep";
+    else if (S.hunger > 75) a = "hungry";
+    else if (S.mood < 35) a = "sad";
+    else a = "idle";
+  }
+
+  const bob =
+    a === "party" ? (frame % 2 ? -2 : 0)
+    : a === "walk" ? (frame % 2 ? -1 : 0) // brisker step than the idle bob
+    : frame % 4 < 2 ? 0 : -1;
+  const dy = a === "sleep" ? 1 : bob;
+  const L = LAYOUTS[st.name] || LAYOUTS.default;
+  const grid = st.name === "egg" ? EGG : L.grid;
+  drawGrid(grid, bodyColor(), dy);
+
+  if (st.name !== "egg") {
+    // Where to look: a nearby cursor wins, then stroll direction, then the
+    // occasional idle glance. HORIZONTAL only — vertical pupil shift dragged
+    // the eyes toward the mouth (and out of the senior's goggles) and made
+    // the whole face fall apart.
+    let lx = 0;
+    if (a === "walk" && walking) {
+      lx = walking;
+    } else if (cursorAt) {
+      lx = Math.abs(cursorAt.dx) > 30 ? Math.sign(cursorAt.dx) : 0;
+    } else {
+      if (now > glance.until && Math.random() < 0.02)
+        glance = { dx: Math.floor(Math.random() * 3) - 1, until: now + 1200 };
+      if (now < glance.until) lx = glance.dx;
+    }
+
+    const ey = L.eyeY + dy;
+
+    // The senior's marker is little pointy ears — a silhouette change that
+    // stays OFF the face. (Goggles were tried; they wrecked the eyes.)
+    if (st.name === "senior") {
+      px(4, 0 + dy, "#2b2b2b"); px(4, 1 + dy, "#2b2b2b"); px(5, 1 + dy, "#2b2b2b");
+      px(11, 0 + dy, "#2b2b2b"); px(11, 1 + dy, "#2b2b2b"); px(10, 1 + dy, "#2b2b2b");
+    }
+
+    // eyes — the classic format: 2px tall, 1px on blink, nothing fancier
+    if (a === "sleep") { px(L.eyeXL, ey, "#2b2b2b"); px(L.eyeXL + 1, ey, "#2b2b2b"); px(L.eyeXR - 1, ey, "#2b2b2b"); px(L.eyeXR, ey, "#2b2b2b"); }
+    else if (a === "sad") { px(L.eyeXL, ey + 1, "#2b2b2b"); px(L.eyeXR, ey + 1, "#2b2b2b"); }
+    else if (frame % 24 === 0) { px(L.eyeXL, ey, "#2b2b2b"); px(L.eyeXR, ey, "#2b2b2b"); } // blink
+    else {
+      for (let i = 0; i < L.eyeH; i++) {
+        px(L.eyeXL + lx, ey + i, "#2b2b2b");
+        px(L.eyeXR + lx, ey + i, "#2b2b2b");
+      }
+    }
+
+    // mouth
+    const my = L.mouthY + dy;
+    if (a === "eat") { if (frame % 2) { px(7, my, "#2b2b2b"); px(8, my, "#2b2b2b"); px(7, my - 1, "#2b2b2b"); px(8, my - 1, "#2b2b2b"); } else { px(7, my, "#2b2b2b"); px(8, my, "#2b2b2b"); } }
+    else if (a === "party" || a === "love") { px(6, my - 1, "#2b2b2b"); px(7, my, "#2b2b2b"); px(8, my, "#2b2b2b"); px(9, my - 1, "#2b2b2b"); }
+    else if (a === "sad" || a === "hungry") { px(7, my, "#2b2b2b"); px(8, my, "#2b2b2b"); px(6, my + 1, "#2b2b2b"); px(9, my + 1, "#2b2b2b"); }
+    else { px(7, my, "#2b2b2b"); px(8, my, "#2b2b2b"); }
+
+    // blush when happy
+    if (a === "party" || a === "love" || S.mood > 80) { px(L.blushXL, L.blushY + dy, "#f48fb1"); px(L.blushXR, L.blushY + dy, "#f48fb1"); }
+  } else if (frame % 8 < 2) {
+    // egg wiggles occasionally: crack pixel
+    px(8, 5, "#2b2b2b");
+  }
+
+  // wizard hat — tapers up from a brim that rests on the crown (grid row 2)
+  if (st.name === "wizard") {
+    const H = "#4a148c";
+    px(7, -2 + dy, H); px(8, -2 + dy, H);
+    for (let x = 6; x <= 9; x++) px(x, -1 + dy, H);
+    for (let x = 5; x <= 10; x++) px(x, 0 + dy, H);
+    for (let x = 4; x <= 11; x++) px(x, 1 + dy, H); // brim, resting on the crown
+    px(7, 0 + dy, "#ffd54f"); // gem, set into the hat rather than floating beside it
+  }
+
+  // accessories (settings) — anchored to the stage's layout, drawn after the
+  // hat so the layering is stable
+  const acc = st.name === "egg" ? "none" : S.custom.accessory;
+  if (acc === "bow") {
+    // side bow on the crown; on a wizard it reads as pinned to the brim
+    const bx = L.blushXL;
+    px(bx, L.top - 1 + dy, "#f06292"); px(bx + 1, L.top - 1 + dy, "#f06292");
+    px(bx, L.top + dy, "#f06292"); px(bx + 1, L.top + dy, "#c2185b"); // knot
+  } else if (acc === "scarf") {
+    for (let x = L.blushXL; x <= L.blushXR; x++) px(x, L.scarfY + dy, "#e53935");
+    px(L.blushXL + 1, L.scarfY + 1 + dy, "#e53935"); px(L.blushXL + 1, L.scarfY + 2 + dy, "#c62828"); // trailing end
+  } else if (acc === "sprout" && st.name !== "wizard") { // the hat would bury it
+    px(7, L.top - 1 + dy, "#33691e"); // stem
+    px(6, L.top - 2 + dy, "#66bb6a"); px(7, L.top - 2 + dy, "#66bb6a"); px(8, L.top - 2 + dy, "#9ccc65"); // leaves
+  }
+
+  // confetti while partying — pinned to the outer columns, which the blob never
+  // occupies, so it can't land on the pet's face and read as broken eyes
+  if (a === "party") {
+    const conf = ["#ffd54f", "#f48fb1", "#4dd0e1"];
+    for (let i = 0; i < 4; i++) {
+      px(i % 2 ? 15 : 0, (frame * 2 + i * 4) % 16, conf[i % conf.length]);
+    }
+  }
+
+  // floating hearts while being petted — outer columns, same trick as confetti
+  if (a === "love") {
+    for (let i = 0; i < 3; i++) {
+      px(i % 2 ? 15 : 0, 13 - ((frame * 2 + i * 5) % 13), "#f06292");
+    }
+  }
+
+  // stubby alternating feet while strolling
+  if (a === "walk") {
+    const f = frame % 2;
+    px(L.feetXL + f, 14 + dy, "#2b2b2b");
+    px(L.feetXR - f, 14 + dy, "#2b2b2b");
+  }
+
+  // zzz
+  if (a === "sleep" && frame % 4 < 2) { px(13, 3, "#fffef2"); px(14, 2, "#fffef2"); }
+
+  statsEl.textContent =
+    `${S.custom.name ? S.custom.name + " " : ""}lv.${level()}  🍖${Math.round(100 - S.hunger)}  ⚡${Math.round(S.energy)}`;
+}
+setInterval(render, 250); // chunky 4fps, like the real thing
+render();
+</script>
+</body>
+</html>

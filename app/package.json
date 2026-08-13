@@ -1,0 +1,13 @@
+{
+  "name": "claude-pet",
+  "version": "0.1.0",
+  "description": "A tamagotchi fed by Claude Code hooks. Floats above all windows.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/verify.js"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}
