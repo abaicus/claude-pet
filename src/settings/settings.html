@@ -3,114 +3,186 @@
 <head>
 <meta charset="utf-8">
 <style>
-  /* Same pixel language as the pet's speech bubble: cream card, hard border,
-     hard shadow, monospace. The window is transparent, so the card floats.
-     One deliberate look — no light/dark swap. */
+  /* Pixel language, same as the speech bubble: cream paper, hard ink border,
+     hard offset shadow, monospace, no soft edges anywhere. Every control is
+     drawn by hand — native widgets break the spell. One deliberate look, no
+     light/dark swap. */
+  :root {
+    --ink: #2b2b2b;
+    --paper: #fffef2;
+    --paper-2: #ffffff;
+    --shade: #ece9d8;
+    --danger: #b71c1c;
+  }
   html, body {
     margin: 0; height: 100%;
     background: transparent;
     overflow: hidden;
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    color: #2b2b2b;
+    color: var(--ink);
     -webkit-user-select: none; user-select: none;
   }
   #card {
     box-sizing: border-box;
-    height: calc(100% - 12px);
-    margin: 4px 8px 8px 4px;
-    background: #fffef2;
-    border: 3px solid #2b2b2b;
-    box-shadow: 4px 4px 0 #2b2b2b;
+    height: calc(100% - 16px);
+    margin: 5px 11px 11px 5px;
+    background: var(--paper);
+    border: 3px solid var(--ink);
+    box-shadow: 6px 6px 0 var(--ink);
     display: flex; flex-direction: column;
   }
+
+  /* ---- titlebar ---- */
   #titlebar {
     -webkit-app-region: drag;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 7px 10px;
-    background: #2b2b2b; color: #fffef2;
-    font-size: 11px; letter-spacing: 1px;
     flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px;
+    background: var(--ink); color: var(--paper);
+    font-size: 11px; letter-spacing: 3px;
   }
   #close {
     -webkit-app-region: no-drag;
-    cursor: pointer; border: 2px solid #fffef2;
-    padding: 0 5px; line-height: 14px; font-size: 11px;
+    cursor: pointer;
+    border: 2px solid var(--paper);
+    width: 20px; height: 18px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; line-height: 1;
   }
-  #close:hover { background: #fffef2; color: #2b2b2b; }
+  #close:hover { background: var(--paper); color: var(--ink); }
 
   /* min-height:0 is load-bearing: without it a flex item refuses to shrink
-     below its content, so the card outgrows its own border and the footer
-     lands outside the frame. */
+     below its content, so the card outgrows its own border. */
   #scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
-  #scroll::-webkit-scrollbar { width: 9px; }
-  #scroll::-webkit-scrollbar-thumb { background: #2b2b2b; }
-  #scroll::-webkit-scrollbar-track { background: #eae8d8; }
+  #scroll::-webkit-scrollbar { width: 12px; }
+  #scroll::-webkit-scrollbar-track { background: var(--shade); border-left: 3px solid var(--ink); }
+  #scroll::-webkit-scrollbar-thumb { background: var(--ink); border: 2px solid var(--shade); }
 
-  .section { padding: 9px 12px 3px; }
-  .section + .section { border-top: 1px dashed rgba(43,43,43,0.22); }
-  .label { font-size: 9px; letter-spacing: 2px; margin-bottom: 6px; opacity: 0.65; }
-  .label span { letter-spacing: 0.5px; text-transform: none; opacity: 0.85; }
+  /* ---- sections ---- */
+  .section { padding: 18px 18px 20px; }
+  .section + .section { border-top: 3px solid var(--ink); }
+  .label {
+    font-size: 10px; letter-spacing: 3px;
+    margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .label::before { content: "▪"; font-size: 9px; }
+  .label::after { /* the rule that fills the rest of the row */
+    content: ""; flex: 1; height: 3px;
+    background: repeating-linear-gradient(90deg, var(--ink) 0 3px, transparent 3px 6px);
+    opacity: 0.35;
+  }
+  .label em { font-style: normal; letter-spacing: 0.5px; opacity: 0.6; font-size: 10px; }
+  .row { display: flex; align-items: center; gap: 12px; font-size: 13px; margin: 10px 0; }
+  .row:first-of-type { margin-top: 0; }
+  .row > label, .row > .grow { flex: 1; }
+  .note { font-size: 11px; line-height: 1.5; opacity: 0.6; margin-top: 10px; }
+  .val { font-size: 11px; min-width: 76px; text-align: right; letter-spacing: 0.5px; }
 
+  /* ---- text field ---- */
   input[type=text] {
     width: 100%; box-sizing: border-box;
-    border: 2px solid #2b2b2b; background: #fff;
-    padding: 4px 6px; font: inherit; font-size: 12px; outline: none; color: inherit;
+    border: 3px solid var(--ink); background: var(--paper-2);
+    box-shadow: 3px 3px 0 var(--ink);
+    padding: 9px 10px; font: inherit; font-size: 14px; letter-spacing: 1px;
+    outline: none; color: inherit;
   }
-  input[type=checkbox] { accent-color: #2b2b2b; margin: 0; }
-  input[type=range] { flex: 1; accent-color: #2b2b2b; margin: 0; }
 
-  .row { display: flex; align-items: center; gap: 7px; font-size: 12px; margin: 4px 0; }
-  .row label { flex: 1; }
+  /* ---- checkbox: hand-drawn box with a chunky mark ---- */
+  input[type=checkbox] {
+    appearance: none; -webkit-appearance: none;
+    margin: 0; flex: 0 0 auto;
+    width: 20px; height: 20px;
+    border: 3px solid var(--ink); background: var(--paper-2);
+    box-shadow: 2px 2px 0 var(--ink);
+    cursor: pointer; position: relative;
+  }
+  input[type=checkbox]:checked::after {
+    content: ""; position: absolute; inset: 2px;
+    background: var(--ink);
+  }
+  input[type=checkbox]:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--ink); }
 
-  .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+  /* ---- slider: square thumb on a hard track ---- */
+  input[type=range] {
+    appearance: none; -webkit-appearance: none;
+    flex: 1; margin: 0; height: 20px; background: transparent; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 12px; background: var(--paper-2);
+    border: 3px solid var(--ink); box-shadow: 2px 2px 0 var(--ink);
+  }
+  input[type=range]::-webkit-slider-thumb {
+    appearance: none; -webkit-appearance: none;
+    width: 14px; height: 20px; margin-top: -7px;
+    background: var(--ink); border: 0;
+    box-shadow: 2px 2px 0 rgba(43, 43, 43, 0.35);
+  }
+
+  /* ---- buttons ---- */
+  button {
+    border: 3px solid var(--ink); background: var(--paper-2); color: inherit;
+    box-shadow: 3px 3px 0 var(--ink);
+    padding: 7px 11px; font: inherit; font-size: 12px; letter-spacing: 0.5px;
+    cursor: pointer;
+  }
+  button:hover { background: var(--ink); color: var(--paper); }
+  button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  button.danger { border-color: var(--danger); color: var(--danger); box-shadow: 3px 3px 0 var(--danger); }
+  button.danger:hover, button.danger.armed { background: var(--danger); color: var(--paper); }
+
+  /* ---- palette swatches ---- */
+  .swatches { display: flex; gap: 10px; flex-wrap: wrap; }
   .swatch {
-    width: 40px; height: 22px; display: flex; padding: 1px;
-    border: 2px solid #2b2b2b; background: #fff; cursor: pointer;
+    width: 52px; height: 28px; display: flex; padding: 2px;
+    border: 3px solid var(--ink); background: var(--paper-2);
+    box-shadow: 3px 3px 0 var(--ink); cursor: pointer;
   }
   .swatch i { flex: 1; }
-  .swatch.sel { outline: 3px solid #2b2b2b; outline-offset: 1px; }
+  .swatch:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  .swatch.sel { outline: 3px solid var(--ink); outline-offset: 3px; }
 
-  .accs { display: flex; gap: 5px; flex-wrap: wrap; }
+  /* ---- accessory chips ---- */
+  .accs { display: flex; gap: 9px; flex-wrap: wrap; }
   .acc {
-    border: 2px solid #2b2b2b; background: #fff; cursor: pointer;
-    padding: 3px 7px; font-size: 11px; line-height: 1.25;
+    border: 3px solid var(--ink); background: var(--paper-2); cursor: pointer;
+    box-shadow: 3px 3px 0 var(--ink);
+    padding: 6px 9px 5px; font-size: 12px; line-height: 1.3; min-width: 62px;
   }
-  .acc small { display: block; font-size: 8.5px; opacity: 0.6; letter-spacing: 0.5px; }
-  .acc.sel { background: #2b2b2b; color: #fffef2; }
-  .acc.sel small { opacity: 0.75; }
-  .acc.locked { opacity: 0.45; }
+  .acc small { display: block; font-size: 9px; opacity: 0.55; letter-spacing: 1px; margin-top: 2px; }
+  .acc:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  .acc.sel { background: var(--ink); color: var(--paper); }
+  .acc.sel small { opacity: 0.7; }
+  .acc.locked { opacity: 0.4; box-shadow: none; }
 
-  button {
-    border: 2px solid #2b2b2b; background: #fff; color: inherit;
-    padding: 3px 8px; font: inherit; font-size: 11px; cursor: pointer;
-  }
-  button:hover { background: #2b2b2b; color: #fffef2; }
-  button.danger { border-color: #b71c1c; color: #b71c1c; }
-  button.danger:hover { background: #b71c1c; color: #fffef2; }
-  button.danger.armed { background: #b71c1c; color: #fffef2; }
+  /* ---- debug grids ---- */
+  .debug-grid { display: flex; flex-wrap: wrap; gap: 9px; }
+  .debug-grid button { font-size: 11px; padding: 5px 9px; box-shadow: 2px 2px 0 var(--ink); }
+  .debug-grid + .debug-grid { margin-top: 9px; }
 
-  .debug-grid { display: flex; flex-wrap: wrap; gap: 5px; }
-  .statline { font-size: 10px; opacity: 0.7; }
-  #hook-status.bad { color: #b71c1c; opacity: 1; }
+  #hook-status { font-size: 11px; opacity: 0.65; letter-spacing: 0.5px; }
+  #hook-status.bad { color: var(--danger); opacity: 1; }
+  #level-label { font-size: 11px; letter-spacing: 0.5px; opacity: 0.65; }
+
   #hint {
     flex: 0 0 auto;
-    padding: 7px 12px 8px;
-    background: #fffef2;
-    border-top: 3px solid #2b2b2b;
-    font-size: 9px; letter-spacing: 1px;
-    color: rgba(43, 43, 43, 0.55); /* fade the text, not the whole layer */
+    padding: 11px 18px;
+    background: var(--shade);
+    border-top: 3px solid var(--ink);
+    font-size: 10px; letter-spacing: 1.5px;
+    color: rgba(43, 43, 43, 0.6);
   }
 </style>
 </head>
 <body>
 <div id="card">
-  <div id="titlebar"><span>CLAUDE-PET SETTINGS</span><span id="close">✕</span></div>
+  <div id="titlebar"><span>CLAUDE-PET</span><span id="close">✕</span></div>
 
   <div id="scroll">
     <div class="section">
       <div class="label">NAME</div>
       <input type="text" id="name" maxlength="12" spellcheck="false" placeholder="name me!">
-      <div class="row"><span class="statline" id="level-label"></span></div>
+      <div class="note"><span id="level-label"></span></div>
     </div>
 
     <div class="section">
@@ -119,7 +191,7 @@
     </div>
 
     <div class="section">
-      <div class="label">ACCESSORY <span>(one at a time, unlocked by level)</span></div>
+      <div class="label">ACCESSORY <em>one at a time, unlocked by level</em></div>
       <div class="accs" id="accessories"></div>
     </div>
 
@@ -128,14 +200,14 @@
       <div class="row"><label for="t-bubbles">speech bubbles</label><input type="checkbox" id="t-bubbles"></div>
       <div class="row"><label for="t-stats">stats line</label><input type="checkbox" id="t-stats"></div>
       <div class="row"><label for="t-glow">glow</label><input type="checkbox" id="t-glow"></div>
-      <div class="row"><span>size</span><input type="range" id="scale" min="0.5" max="2" step="0.05"><span id="scale-label" class="statline"></span></div>
+      <div class="row"><span>size</span><input type="range" id="scale" min="0.5" max="2" step="0.05"><span id="scale-label" class="val"></span></div>
     </div>
 
     <div class="section">
       <div class="label">SOUND</div>
-      <div class="row"><label for="t-sound">sounds (chiptune, synthesized)</label><input type="checkbox" id="t-sound"></div>
-      <div class="row"><span>vol</span><input type="range" id="volume" min="0" max="1" step="0.05"><span id="volume-label" class="statline"></span></div>
-      <div class="statline">important notifications always chime</div>
+      <div class="row"><label for="t-sound">chiptune sounds</label><input type="checkbox" id="t-sound"></div>
+      <div class="row"><span>vol</span><input type="range" id="volume" min="0" max="1" step="0.05"><span id="volume-label" class="val"></span></div>
+      <div class="note">synthesized in code — no audio files.<br>important notifications always chime, even muted.</div>
     </div>
 
     <div class="section">
@@ -143,23 +215,23 @@
       <div class="row">
         <button id="hooks-install">reinstall</button>
         <button id="hooks-uninstall">uninstall</button>
-        <span id="hook-status" class="statline"></span>
+        <span id="hook-status" class="grow"></span>
       </div>
     </div>
 
     <div class="section">
       <div class="label">DANGER</div>
       <div class="row"><button class="danger" id="reset">reset to lv.0…</button></div>
-      <div class="statline">wipes xp, stats, accessory — keeps name, palette, sound, position</div>
+      <div class="note">wipes xp, stats and accessory.<br>keeps name, palette, sound and position.</div>
     </div>
 
     <div class="section">
-      <div class="label">DEBUG — STATE</div>
-      <div class="row"><span>lvl</span><input type="range" id="dbg-level" min="0" max="10" step="1"><span class="statline" id="dbg-level-label"></span></div>
-      <div class="row"><span>food</span><input type="range" id="dbg-food" min="0" max="200" step="1"><span class="statline" id="dbg-food-label"></span></div>
-      <div class="row"><span>enrg</span><input type="range" id="dbg-energy" min="0" max="100" step="1"><span class="statline" id="dbg-energy-label"></span></div>
-      <div class="row"><span>mood</span><input type="range" id="dbg-mood" min="0" max="100" step="1"><span class="statline" id="dbg-mood-label"></span></div>
-      <div class="debug-grid" style="margin-top:5px">
+      <div class="label">DEBUG <em>state</em></div>
+      <div class="row"><span class="val" style="text-align:left;min-width:44px">level</span><input type="range" id="dbg-level" min="0" max="10" step="1"><span class="val" id="dbg-level-label"></span></div>
+      <div class="row"><span class="val" style="text-align:left;min-width:44px">food</span><input type="range" id="dbg-food" min="0" max="200" step="1"><span class="val" id="dbg-food-label"></span></div>
+      <div class="row"><span class="val" style="text-align:left;min-width:44px">energy</span><input type="range" id="dbg-energy" min="0" max="100" step="1"><span class="val" id="dbg-energy-label"></span></div>
+      <div class="row"><span class="val" style="text-align:left;min-width:44px">mood</span><input type="range" id="dbg-mood" min="0" max="100" step="1"><span class="val" id="dbg-mood-label"></span></div>
+      <div class="debug-grid" style="margin-top:14px">
         <button id="dbg-xp">+100 xp</button>
         <button id="dbg-commits9">commits → next is 10th</button>
         <button id="dbg-streak4">streak → next is 5th</button>
@@ -170,26 +242,27 @@
     </div>
 
     <div class="section">
-      <div class="label">DEBUG — FAKE EVENTS</div>
+      <div class="label">DEBUG <em>fake events</em></div>
       <div class="debug-grid" id="debug-events"></div>
+      <div class="note">fired through the real reducer — real stats, real reactions.</div>
     </div>
 
     <div class="section">
-      <div class="label">DEBUG — ANIMS</div>
+      <div class="label">DEBUG <em>anims</em></div>
       <div class="debug-grid" id="debug-anims"></div>
-      <div class="debug-grid" style="margin-top:5px">
+      <div class="debug-grid">
         <button id="dbg-bubble">bubble</button>
         <button id="dbg-important">important bubble</button>
       </div>
     </div>
 
     <div class="section">
-      <div class="label">DEBUG — SOUNDS</div>
+      <div class="label">DEBUG <em>sounds</em></div>
       <div class="debug-grid" id="debug-sounds"></div>
     </div>
   </div>
 
-  <div id="hint">changes apply instantly · esc closes</div>
+  <div id="hint">CHANGES APPLY INSTANTLY · ESC CLOSES</div>
 </div>
 <script src="settings.js"></script>
 </body>

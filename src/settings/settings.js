@@ -70,9 +70,9 @@ function render(s) {
   $('volume-label').textContent = Math.round(s.volume * 100) + '%';
 
   const hs = $('hook-status');
-  if (s.hooks.ok && s.hooks.installed) { hs.textContent = 'installed ✓'; hs.className = 'statline'; }
-  else if (s.hooks.ok) { hs.textContent = 'not installed'; hs.className = 'statline'; }
-  else { hs.textContent = s.hooks.reason || 'error'; hs.className = 'statline bad'; }
+  if (s.hooks.ok) hs.textContent = s.hooks.installed ? 'installed ✓' : 'not installed';
+  else hs.textContent = s.hooks.reason || 'error';
+  hs.classList.toggle('bad', !s.hooks.ok); // keep layout classes, only flag the error
 
   // debug state sliders reflect the brain's truth unless being dragged
   const dbg = [
