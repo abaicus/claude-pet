@@ -37,7 +37,10 @@ git push && git push --tags
 
 Route 2 exists so a missing or expired token delays the cask by an hour
 instead of silently shipping a release nobody can `brew upgrade` into. Both
-routes copy the same asset, so they cannot disagree.
+routes copy the same asset, so they cannot disagree. (GitHub pauses cron
+workflows in repositories that see no commits for 60 days, and the tap is
+quiet by design — so route 1 is worth setting up, and route 2 can always be
+run by hand from the tap's Actions tab.)
 
 To enable route 1: create a fine-grained PAT with **Contents: Read and write**
 scoped to `abaicus/homebrew-tap`
