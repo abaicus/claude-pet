@@ -491,6 +491,17 @@ class Brain extends EventEmitter {
         this.pushBubble({ text: cmd.text || 'test bubble!', important: !!cmd.important, kind: 'debug' });
         break;
       }
+      case 'completeOnboarding': {
+        const first = !this.prefs.onboarded;
+        this.prefs.onboarded = true;
+        // Only celebrate the first time — replaying the intro from the menu is
+        // not a hatching.
+        if (first) {
+          this.applyFx([{ type: 'anim', name: 'party' }, { type: 'sound', name: 'hatch' }]);
+          this.pushBubble({ text: `hi! I'm ${this.prefs.name} ♥`, kind: 'hello' });
+        }
+        break;
+      }
       case 'installHooks': result = this.installHooks(); break;
       case 'uninstallHooks': result = this.uninstallHooks(); break;
       default: result = { ok: false, reason: 'unknown command' };
@@ -612,6 +623,7 @@ class Brain extends EventEmitter {
       soundOn: this.prefs.soundOn,
       volume: this.prefs.volume,
       clickThrough: this.prefs.clickThrough,
+      onboarded: this.prefs.onboarded,
       position: this.prefs.position,
       hooks: this.hooksStatus,
       sessions: this.sessions.summary(now),

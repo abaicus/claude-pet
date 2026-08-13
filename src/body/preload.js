@@ -12,7 +12,8 @@ const CH = {
   cursor: 'pet:cursor',
   moveWindow: 'pet:move-window',
   contextMenu: 'pet:context-menu',
-  closeSettings: 'pet:close-settings'
+  closeSettings: 'pet:close-settings',
+  closeOnboarding: 'pet:close-onboarding'
 };
 
 contextBridge.exposeInMainWorld('petAPI', {
@@ -23,5 +24,6 @@ contextBridge.exposeInMainWorld('petAPI', {
   moveWindowBy: (dx, dy) => ipcRenderer.send(CH.moveWindow, { dx, dy }),
   dragEnd: () => ipcRenderer.send(CH.moveWindow, { done: true }),
   contextMenu: () => ipcRenderer.send(CH.contextMenu),
-  closeSettings: () => ipcRenderer.send(CH.closeSettings)
+  closeSettings: () => ipcRenderer.send(CH.closeSettings),
+  closeOnboarding: () => ipcRenderer.send(CH.closeOnboarding)
 });

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>meet your pet</title>
+<style>
+  /* Same pixel language as the settings window and the speech bubble: cream
+     paper, hard ink border, hard offset shadow, monospace, no soft edges. This
+     is the first thing anyone sees, so it has to look like the pet. */
+  :root {
+    --ink: #2b2b2b;
+    --paper: #fffef2;
+    --paper-2: #ffffff;
+    --shade: #ece9d8;
+    --ok: #2e7d32;
+    --bad: #b71c1c;
+  }
+  html, body {
+    margin: 0; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: var(--ink);
+    -webkit-user-select: none; user-select: none;
+  }
+  #card {
+    box-sizing: border-box;
+    height: calc(100% - 16px);
+    margin: 5px 11px 11px 5px;
+    background: var(--paper);
+    border: 3px solid var(--ink);
+    box-shadow: 6px 6px 0 var(--ink);
+    display: flex; flex-direction: column;
+  }
+  #titlebar {
+    -webkit-app-region: drag;
+    flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px;
+    background: var(--ink); color: var(--paper);
+    font-size: 11px; letter-spacing: 3px;
+  }
+  #skip {
+    -webkit-app-region: no-drag;
+    cursor: pointer; font-size: 9px; letter-spacing: 2px;
+    border: 2px solid rgba(255, 254, 242, 0.5); padding: 3px 7px;
+    color: rgba(255, 254, 242, 0.7);
+  }
+  #skip:hover { border-color: var(--paper); color: var(--paper); }
+
+  /* min-height:0 so the flex child may shrink below its content */
+  #body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  /* `safe center` centres a short step without clipping the top of a tall
+     one — plain `center` would hide the beginning of anything that overflows. */
+  #stage {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px 22px 10px;
+    display: flex; flex-direction: column; justify-content: safe center;
+  }
+  #stage::-webkit-scrollbar { width: 12px; }
+  #stage::-webkit-scrollbar-track { background: var(--shade); border-left: 3px solid var(--ink); }
+  #stage::-webkit-scrollbar-thumb { background: var(--ink); border: 2px solid var(--shade); }
+
+  .step[hidden] { display: none; }
+  h1 {
+    font-size: 15px; letter-spacing: 1px; margin: 0 0 4px;
+  }
+  .kicker { font-size: 9px; letter-spacing: 3px; opacity: 0.5; margin-bottom: 12px; }
+  p { font-size: 12px; line-height: 1.7; margin: 0 0 11px; }
+  p.small { font-size: 11px; opacity: 0.65; line-height: 1.6; }
+  b { background: var(--shade); padding: 1px 4px; }
+  ul { margin: 0 0 11px; padding-left: 0; list-style: none; font-size: 12px; line-height: 1.7; }
+  li { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 7px; }
+  li i {  /* the gesture, as a key-cap, so the list reads as two columns */
+    font-style: normal; flex: 0 0 auto; min-width: 74px; text-align: center;
+    background: var(--shade); padding: 1px 5px;
+  }
+
+  /* ---- the pet itself, live ---- */
+  .hero { display: flex; align-items: flex-end; justify-content: center; }
+  .hero canvas { width: 220px; height: 138px; }
+
+  /* ---- controls (same widgets as the settings window) ---- */
+  .field { margin-bottom: 12px; }
+  .flabel { font-size: 9px; letter-spacing: 3px; opacity: 0.55; margin-bottom: 7px; }
+  input[type=text] {
+    width: 100%; box-sizing: border-box;
+    border: 3px solid var(--ink); background: var(--paper-2);
+    box-shadow: 3px 3px 0 var(--ink);
+    padding: 9px 10px; font: inherit; font-size: 14px; letter-spacing: 1px;
+    outline: none; color: inherit;
+  }
+  .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+  .swatch {
+    width: 46px; height: 26px; display: flex; padding: 2px;
+    border: 3px solid var(--ink); background: var(--paper-2);
+    box-shadow: 3px 3px 0 var(--ink); cursor: pointer;
+  }
+  .swatch i { flex: 1; }
+  .swatch:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  .swatch.sel { outline: 3px solid var(--ink); outline-offset: 3px; }
+  .row { display: flex; align-items: center; gap: 12px; font-size: 12px; margin: 9px 0; }
+  .row > label { flex: 1; }
+  .row em { font-style: normal; font-size: 11px; opacity: 0.5; }
+  input[type=checkbox] {
+    appearance: none; -webkit-appearance: none;
+    margin: 0; flex: 0 0 auto;
+    width: 20px; height: 20px;
+    border: 3px solid var(--ink); background: var(--paper-2);
+    box-shadow: 2px 2px 0 var(--ink);
+    cursor: pointer; position: relative;
+  }
+  input[type=checkbox]:checked::after { content: ""; position: absolute; inset: 2px; background: var(--ink); }
+  input[type=range] {
+    appearance: none; -webkit-appearance: none;
+    flex: 1; margin: 0; height: 20px; background: transparent; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 12px; background: var(--paper-2);
+    border: 3px solid var(--ink); box-shadow: 2px 2px 0 var(--ink);
+  }
+  input[type=range]::-webkit-slider-thumb {
+    appearance: none; -webkit-appearance: none;
+    width: 14px; height: 20px; margin-top: -7px;
+    background: var(--ink); border: 0;
+    box-shadow: 2px 2px 0 rgba(43, 43, 43, 0.35);
+  }
+  .val { font-size: 11px; min-width: 54px; text-align: right; }
+
+  /* ---- hook status card ---- */
+  #hook-card {
+    border: 3px solid var(--ink); background: var(--paper-2);
+    box-shadow: 3px 3px 0 var(--ink);
+    padding: 11px 12px; margin-bottom: 12px;
+    font-size: 12px; line-height: 1.6;
+  }
+  #hook-card .state { font-size: 11px; letter-spacing: 1px; }
+  #hook-card .state.ok { color: var(--ok); }
+  #hook-card .state.bad { color: var(--bad); }
+  code { font-size: 11px; background: var(--shade); padding: 1px 4px; }
+
+  /* ---- footer: dots + buttons ---- */
+  #foot {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 18px;
+    background: var(--shade);
+    border-top: 3px solid var(--ink);
+  }
+  #dots { flex: 1; display: flex; gap: 7px; }
+  .dot {
+    width: 10px; height: 10px;
+    border: 2px solid var(--ink); background: transparent;
+    padding: 0; box-shadow: none; cursor: pointer;
+  }
+  .dot.on { background: var(--ink); }
+  .dot:active { transform: none; box-shadow: none; }
+  button {
+    border: 3px solid var(--ink); background: var(--paper-2); color: inherit;
+    box-shadow: 3px 3px 0 var(--ink);
+    padding: 7px 13px; font: inherit; font-size: 12px; letter-spacing: 0.5px;
+    cursor: pointer;
+  }
+  button:hover { background: var(--ink); color: var(--paper); }
+  button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  button[disabled] { opacity: 0.3; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="card">
+  <div id="titlebar"><span>CLAUDE-PET</span><span id="skip">SKIP</span></div>
+
+  <div id="body">
+    <div id="stage">
+
+      <div class="step" id="step-0">
+        <div class="hero"><canvas id="preview"></canvas></div>
+        <div class="kicker">HELLO</div>
+        <h1>this is your pet.</h1>
+        <p>It lives on top of your desktop and feeds on your Claude Code
+          sessions. Prompts and edits are food; commits, green tests and
+          deploys are xp. It grows through <b>25 levels</b> and seven forms.</p>
+        <p class="small">It only ever <em>watches</em>. Nothing it does can slow
+          Claude down, block a tool call, or fail a session — and it never
+          talks to the network.</p>
+      </div>
+
+      <div class="step" id="step-1" hidden>
+        <div class="kicker">STEP 2 / 4</div>
+        <h1>how it hears Claude.</h1>
+        <p>Claude Code can run a small script whenever something happens. The
+          pet has added itself to <code>~/.claude/settings.json</code>:</p>
+        <div id="hook-card">
+          <div class="state" id="hook-state">checking…</div>
+          <div class="small" id="hook-note"></div>
+        </div>
+        <p class="small">Your existing settings are preserved, installing twice
+          changes nothing, and <b>Settings → Claude hooks</b> removes it again
+          whenever you like.</p>
+        <p class="small">What it keeps: which tool ran, how many lines an edit
+          touched, the file name, the exit status. What it never keeps: a
+          single character of your prompts — only how long they were.</p>
+      </div>
+
+      <div class="step" id="step-2" hidden>
+        <div class="hero"><canvas id="preview-2"></canvas></div>
+        <div class="kicker">STEP 3 / 4</div>
+        <h1>make it yours.</h1>
+        <div class="field">
+          <div class="flabel">NAME</div>
+          <input type="text" id="name" maxlength="12" spellcheck="false" placeholder="name me!">
+        </div>
+        <div class="field">
+          <div class="flabel">COLOUR</div>
+          <div class="swatches" id="palettes"></div>
+          <p class="small" id="egg-note" hidden>Your egg keeps its shell — this
+            is the colour it hatches into.</p>
+        </div>
+        <div class="field">
+          <div class="flabel">THE REST</div>
+          <div class="row"><label for="t-sound">chiptune sounds <em>synthesized, no files</em></label><input type="checkbox" id="t-sound"></div>
+          <div class="row"><span>size</span><input type="range" id="scale" min="1" max="2.5" step="0.25"><span class="val" id="scale-label"></span></div>
+        </div>
+        <p class="small">All of it — plus 27 accessories you unlock by
+          levelling — lives in Settings afterwards.</p>
+      </div>
+
+      <div class="step" id="step-3" hidden>
+        <div class="kicker">STEP 4 / 4</div>
+        <h1>living with it.</h1>
+        <ul>
+          <li><i>drag</i><span>move it anywhere; it remembers where its feet were</span></li>
+          <li><i>hover</i><span>its stats, plus a line per live Claude session — who's working, who's waiting, who needs you</span></li>
+          <li><i>click</i><span>a pat. it likes those</span></li>
+          <li><i>right-click</i><span>treat, hide, sounds, settings, quit</span></li>
+        </ul>
+        <p class="small">Keys: <b>⌘⌥,</b> settings · <b>⌘⌥T</b> treat ·
+          <b>⌘⌥V</b> hide/show · <b>⌘⌥M</b> sounds · <b>⌘⌥P</b> click-through ·
+          <b>⌘⌥Q</b> quit. <br>⌘⌥P is the escape hatch — a click-through pet
+          can't offer its own way back.</p>
+        <p class="small">It never lies to you: anything estimated is marked
+          <b>~</b>, and anything it can't read is simply absent. You can replay
+          this intro any time from the right-click menu.</p>
+      </div>
+
+    </div>
+
+    <div id="foot">
+      <div id="dots"></div>
+      <button id="back" disabled>back</button>
+      <button id="next">next</button>
+    </div>
+  </div>
+</div>
+<script src="../body/art.js"></script>
+<script src="onboarding.js"></script>
+</body>
+</html>

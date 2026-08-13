@@ -221,7 +221,8 @@ const IPC = {
   cursor: 'pet:cursor',          // main → pet window (cursor pos for eyes)
   moveWindow: 'pet:move-window', // pet renderer drag → main
   contextMenu: 'pet:context-menu',
-  closeSettings: 'pet:close-settings'
+  closeSettings: 'pet:close-settings',
+  closeOnboarding: 'pet:close-onboarding'
 };
 
 module.exports = {

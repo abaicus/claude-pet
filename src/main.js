@@ -26,6 +26,7 @@ let lastFoot = LEGACY_FOOT; // the gap the feet currently stand at, tracked so a
 let brain;
 let petWin = null;
 let settingsWin = null;
+let onboardWin = null;
 let tray = null;
 let cursorTimer = null;
 let wander = null; // {phase, home:{x,y}, target, startedAt, timer}
@@ -119,9 +120,33 @@ function createSettingsWindow() {
   settingsWin.on('closed', () => { settingsWin = null; });
 }
 
+// Shown once, on the first launch of a fresh install (brain.prefs.onboarded),
+// and on demand from the menu. Same frameless card as the settings window.
+function createOnboardingWindow() {
+  abortWander();
+  if (onboardWin) { onboardWin.show(); onboardWin.focus(); return; }
+  onboardWin = new BrowserWindow({
+    width: 520, height: 660, minWidth: 460, minHeight: 420, maxWidth: 700,
+    center: true, frame: false, transparent: true, hasShadow: false, resizable: true,
+    title: 'meet your pet', fullscreenable: false, maximizable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'body', 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  onboardWin.loadFile(path.join(__dirname, 'onboarding', 'onboarding.html'));
+  onboardWin.on('closed', () => {
+    onboardWin = null;
+    // Closing the window by any route is a decision, not an accident: mark it
+    // done so the intro can never ambush the same person twice.
+    if (brain && !brain.prefs.onboarded) brain.command({ type: 'completeOnboarding' });
+  });
+}
+
 function broadcast(state) {
   fitPetWindow(state);
-  for (const win of [petWin, settingsWin]) {
+  for (const win of [petWin, settingsWin, onboardWin]) {
     if (win && !win.isDestroyed()) win.webContents.send(IPC.state, state);
   }
 }
@@ -187,6 +212,7 @@ function buildMenu() {
   const hidden = petWin && !petWin.isDestroyed() && !petWin.isVisible();
   return Menu.buildFromTemplate([
     { label: 'Settings…', click: () => createSettingsWindow(), ...key('settings') },
+    { label: 'Intro…', click: () => createOnboardingWindow() },
     { type: 'separator' },
     { label: 'Give a treat', click: () => brain.command({ type: 'treat' }), ...key('treat') },
     { label: hidden ? 'Show pet' : 'Hide pet', click: () => togglePetVisible(), ...key('visible') },
@@ -316,6 +342,10 @@ function wireIpc() {
     if (settingsWin && !settingsWin.isDestroyed()) settingsWin.close();
   });
 
+  ipcMain.on(IPC.closeOnboarding, () => {
+    if (onboardWin && !onboardWin.isDestroyed()) onboardWin.close();
+  });
+
   ipcMain.on(IPC.contextMenu, () => {
     abortWander();
     if (petWin) buildMenu().popup({ window: petWin });
@@ -336,6 +366,9 @@ app.whenReady().then(() => {
   startCursorFeed();
 
   registerShortcuts();
+
+  // First launch of a fresh install: introduce yourself before anything else.
+  if (!brain.prefs.onboarded) createOnboardingWindow();
 
   setInterval(maybeStartWander, 45 * 1000);
 

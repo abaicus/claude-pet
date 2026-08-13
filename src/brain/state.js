@@ -60,6 +60,7 @@ function defaultPrefs() {
     soundOn: false,        // off by default — deliberate
     volume: 0.7,
     clickThrough: false,
+    onboarded: false,      // the intro runs once, on the very first launch
     position: null,        // {x, y} — persists separately from pet state
     boxH: null,            // …and the window height it was a corner of, plus
     footH: null            // how far the feet stood above that box's bottom, so
@@ -75,6 +76,10 @@ function migratePrefs(prefs) {
   // a pet saved below the floor must not render smaller than the slider can
   // express, or the settings window would be lying about the size.
   out.scale = Math.max(1, Math.min(2.5, Number(out.scale) || 1.5));
+  // A prefs file that predates the intro belongs to somebody who already has a
+  // pet: greeting them with "hello, I'm new here" would be a lie. Only a
+  // genuinely absent file (handled above) counts as a first launch.
+  if (prefs.onboarded === undefined) out.onboarded = true;
   return out;
 }
 

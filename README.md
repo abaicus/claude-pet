@@ -29,6 +29,15 @@ refuses to touch a config it can't parse — uninstall from the tray removes
 exactly its own entries). Events append to `~/.claude-pet/events.jsonl`;
 the hook script is fire-and-forget and can never block or fail a session.
 
+A four-step intro opens the same launch: what the pet is and that it only ever
+watches, what it just wrote to your Claude settings and what it does and does
+not record, then name / colour / sound / size, then how to live with it. Every
+control in it is live — it sends the same commands the settings window does, so
+there is nothing to apply and nothing to undo. Closing it by any route counts
+as done (an intro that reappears every launch is a nag), and **right-click →
+Intro…** replays it. It shows only for a genuinely new pet: a prefs file that
+predates the intro belongs to somebody who already has one.
+
 ## Using it
 
 - **Left-click** the pet: petting (~45% of the time it answers with a real
@@ -180,6 +189,7 @@ src/
   body/       dumb renderer: render(state) — canvas art, animations,
               bubble, stats line, sounds (all generated in code)
   settings/   remote control only; the brain enforces every rule
+  onboarding/ the first-launch intro — same, plus a live portrait of the pet
   shared/     constants, tuning, IPC channel names
 ```
 
