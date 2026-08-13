@@ -15,11 +15,11 @@ const read = (...p) => fs.readFileSync(path.join(SRC, ...p), 'utf8');
 const PetArt = require('../src/body/art');
 
 test('the window is exactly as tall as the pet needs', () => {
-  const { LAYOUT, GEOM, boxHeight } = PetArt;
+  const { LAYOUT, GEOM, boxHeight, footRoom } = PetArt;
   for (const [form, g] of Object.entries(GEOM)) {
     for (const scale of [1, 1.5, 2, 2.5]) {
       const h = boxHeight(form, scale);
-      const feet = h - LAYOUT.footRoom;          // where pet.js plants the feet
+      const feet = h - footRoom(0);              // where pet.js plants the feet
       const head = feet - g.h * scale;
       assert.ok(head >= LAYOUT.bubbleRoom - 1,
         `${form} at ${scale}× leaves ${head}px above the head — the bubble won't fit`);
@@ -32,19 +32,37 @@ test('the window is exactly as tall as the pet needs', () => {
   assert.ok(boxHeight('senior', 1) < 240, `a senior at 1× still needs ${boxHeight('senior', 1)}px`);
 });
 
+test('the foot room grows with the session lines, and stops growing', () => {
+  const { LAYOUT, footRoom, boxHeight } = PetArt;
+  assert.equal(footRoom(0), LAYOUT.footRoom, 'no sessions, no extra room');
+  assert.equal(footRoom(1) - footRoom(0), LAYOUT.sessionLine);
+  assert.equal(footRoom(LAYOUT.maxLines + 5), footRoom(LAYOUT.maxLines),
+    'past the cap the window must stop growing — the renderer collapses the rest');
+  // …and the pet's own position inside the box is unaffected by any of it
+  for (const lines of [0, 1, 4, 9]) {
+    assert.equal(boxHeight('senior', 1, lines) - footRoom(lines), boxHeight('senior', 1, 0) - footRoom(0),
+      'the space above the feet must not change when a session appears');
+  }
+});
+
 test('main and the renderer size the box from the same table', () => {
   const main = read('main.js');
   const pet = read('body', 'pet.js');
   assert.match(main, /PetArt\.boxHeight\(/, 'main.js must ask art.js how tall the window is');
+  assert.match(main, /PetArt\.footRoom\(/, '…and where the feet stand inside it');
   assert.ok(!/PET_H|height:\s*4\d\d/.test(main), 'main.js still has a hardcoded window height');
-  assert.match(pet, /PetArt\.LAYOUT\.footRoom/, 'pet.js retypes the foot margin instead of reading it');
+  assert.match(pet, /PetArt\.footRoom\(/, 'pet.js retypes the foot margin instead of reading it');
   assert.match(pet, /PetArt\.LAYOUT\.headGap/, 'pet.js retypes the bubble gap instead of reading it');
-  // The feet are the anchor on resize: a pet that jumps when it levels up or
-  // when the size slider moves is a bug you can see.
-  assert.match(main, /y: b\.y \+ b\.height - want/, 'a resize must keep the feet where they are');
+  assert.match(pet, /PetArt\.LAYOUT\.maxLines/, 'the renderer must collapse what the box cannot hold');
+  // The feet are the anchor on every resize: a pet that jumps when it levels
+  // up, when the size slider moves or when a session starts is a visible bug.
+  // Both terms matter — the box AND the gap under it can change at once.
+  assert.match(main, /const feet = b\.y \+ b\.height - lastFoot/, 'a resize must keep the feet where they are');
+  assert.match(main, /y: feet - \(want\.h - want\.foot\)/);
   // …and across a restart, where the saved corner may belong to a box this
   // build no longer uses (every position on disk predates the sizing).
   assert.match(main, /brain\.prefs\.boxH \|\| LEGACY_BOX_H/, 'an upgraded pet would teleport up the screen');
+  assert.match(main, /brain\.prefs\.footH \|\| LEGACY_FOOT/);
 });
 
 test('a saved position carries the box it was a corner of', () => {
@@ -54,14 +72,16 @@ test('a saved position carries the box it was a corner of', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pet-layout-'));
   const brain = new Brain({ dir, settingsPath: path.join(dir, 'claude-settings.json') });
 
-  brain.command({ type: 'setPosition', position: { x: 40, y: 300 }, boxH: 214 });
+  brain.command({ type: 'setPosition', position: { x: 40, y: 300 }, boxH: 214, footH: 30 });
   assert.deepEqual(brain.prefs.position, { x: 40, y: 300 });
   assert.equal(brain.prefs.boxH, 214);
+  assert.equal(brain.prefs.footH, 30, 'a box without its foot room cannot replant the feet');
 
   // An old prefs file has no box at all — that's the caller's problem to
   // default, but it must never be invented here.
   brain.command({ type: 'setPosition', position: { x: 41, y: 301 } });
   assert.equal(brain.prefs.boxH, 214, 'a move without a box must not clear the known one');
+  assert.equal(brain.prefs.footH, 30);
   assert.equal(brain.command({ type: 'setPosition', position: { x: 'x' } }).ok, true);
   assert.deepEqual(brain.prefs.position, { x: 41, y: 301 }, 'a malformed position is ignored');
 });

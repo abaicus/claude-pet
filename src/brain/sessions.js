@@ -21,6 +21,24 @@
 
 const fs = require('fs');
 const { TUNING, contextWindowFor } = require('../shared/constants');
+const { pick } = require('./quips');
+
+// Which hook event means what, for the status shown under the pet. Claude
+// Code fires Stop at the end of every assistant turn and Notification both
+// when it wants permission and when it has been waiting on you a while —
+// between them they say precisely who is blocked on whom.
+//
+// SubagentStop is deliberately absent: a helper finishing is not the turn
+// finishing, and announcing it would be a lie about whose move it is.
+function statusFor(ev) {
+  switch (ev.t) {
+    case 'Notification': return /permission|approve|allow/i.test(ev.msg || '') ? 'perm' : 'idle';
+    case 'Stop': return 'done';
+    case 'SubagentStop': return null;
+    case 'SessionEnd': return null;      // liveness, not status
+    default: return 'working';
+  }
+}
 
 const MAX_READ_PER_POLL = 8 * 1024 * 1024;
 const SEED_TAIL_BYTES = 1024 * 1024;
@@ -52,6 +70,9 @@ class SessionRegistry {
         ctxTokens: null,                // null = never read one. Not zero.
         ctxAt: 0,                       // timestamp of the reading above
         model: null,
+        status: 'working',              // see statusFor() — an event made this
+        statusAt: 0,                    // …when it last changed, for "done 4m"
+        doneSaidAt: 0,                  // last "your turn" call for this one
         lastActivityAt: 0, warned75: false, warned90: false
       };
       this.sessions.set(sid, s);
@@ -59,14 +80,42 @@ class SessionRegistry {
     return s;
   }
 
-  noteEvent(ev) {
-    if (!ev || !ev.sid) return;
+  /**
+   * @param {object} ctx  {live} — false while replaying a backlog, where a
+   *   status still has to be tracked but announcing it would be a lie about
+   *   the present tense.
+   * @returns {Array} fx — the announcement, if this event was news.
+   */
+  noteEvent(ev, ctx = {}) {
+    const fx = [];
+    if (!ev || !ev.sid) return fx;
     const s = this.session(ev.sid);
     s.lastActivityAt = Math.max(s.lastActivityAt, ev.ts || 0);
     if (ev.project) s.project = ev.project;
     if (ev.tp) s.transcript = ev.tp;
     if (ev.t === 'SessionEnd') s.live = false;
     else s.live = true;
+
+    const status = statusFor(ev);
+    if (!status) return fx;
+    const changed = status !== s.status;
+    s.status = status;
+    if (changed) s.statusAt = ev.ts || 0;
+
+    // "Done" is the one status nothing else announces: a permission prompt
+    // and an idle nudge arrive as Notifications, which the reducer relays
+    // word for word, but the end of a turn is silent unless the pet says so.
+    // Which session it was is the whole point, so the project leads.
+    const now = ctx.now || ev.ts || 0;
+    if (changed && status === 'done' && ctx.live && now - s.doneSaidAt > TUNING.doneAnnounceMs) {
+      s.doneSaidAt = now;
+      fx.push({ type: 'anim', name: 'nod' });
+      fx.push({
+        type: 'bubble', kind: 'session-done',
+        text: `${this.label(s)} · ${pick(ctx.rng || Math.random, 'stop')} ✓`
+      });
+    }
+    return fx;
   }
 
   // ------------------------------------------------------------- polling
@@ -329,7 +378,10 @@ class SessionRegistry {
   /** Data for the stats line — real telemetry, not game fiction. */
   summary(now) {
     const live = this.liveSessions()
-      .map(s => ({ sid: s.sid, project: this.label(s), pct: this.ctxFraction(s) }))
+      .map(s => ({
+        sid: s.sid, project: this.label(s), pct: this.ctxFraction(s),
+        status: s.status, statusAt: s.statusAt
+      }))
       // unknown context sorts last: it is the absence of a reading, not a low one
       .sort((a, b) => (b.pct === null ? -1 : b.pct) - (a.pct === null ? -1 : a.pct));
     const known = live.filter(x => x.pct !== null);
@@ -337,6 +389,10 @@ class SessionRegistry {
       count: live.length,
       sessions: live,
       worstPct: known.length ? known[0].pct : null,
+      // Something is BLOCKED on you — the pet wears this one without being
+      // asked, because a permission prompt nobody answers stops the work.
+      // It clears itself: the next event from that session is progress.
+      needsYou: live.some(x => x.status === 'perm'),
       burn: this.burnLabel(now)
     };
   }

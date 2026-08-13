@@ -10,12 +10,18 @@ const { trayIconPngs } = require('./chrome/tray-icon');
 const PetArt = require('./body/art'); // geometry only — it draws nothing here
 
 const PET_W = 320;
-// Height is NOT fixed: it is exactly the creature plus its speech room, and it
-// changes when the pet grows or the size slider moves. macOS will not place a
-// window above the menu bar, so a tall box is a pet that can never be dragged
-// into the top of the screen — 420px of it kept the feet below y≈400 always.
-const petHeight = (rs) => PetArt.boxHeight(rs.form, rs.scale);
+// Height is NOT fixed: it is exactly the creature, its speech room and one
+// line per live session, and it changes when any of those do. macOS will not
+// place a window above the menu bar, so a tall box is a pet that can never be
+// dragged into the top of the screen — 420px of it kept the feet below y≈400.
+function petBox(rs) {
+  const lines = (rs.statsLine && rs.statsLine.lines) ? rs.statsLine.lines.length : 0;
+  return { h: PetArt.boxHeight(rs.form, rs.scale, lines), foot: PetArt.footRoom(lines) };
+}
 const LEGACY_BOX_H = 420;   // the fixed height every position was saved against
+const LEGACY_FOOT = 46;     // …and the foot room those saved positions assumed
+let lastFoot = LEGACY_FOOT; // the gap the feet currently stand at, tracked so a
+                            // resize can put them back exactly where they were
 
 let brain;
 let petWin = null;
@@ -32,12 +38,16 @@ function createPetWindow() {
   const pos = brain.prefs.position;
   const display = screen.getPrimaryDisplay();
   const wa = display.workArea;
-  const h = petHeight(brain.getRenderState());
-  // The saved position is a top-left CORNER, and the box it was a corner of
-  // may not be this one — an upgrade from the old fixed 420 shrinks it by
-  // half. Put the feet back where they were rather than the corner.
+  const box = petBox(brain.getRenderState());
+  const h = box.h;
+  lastFoot = box.foot;
+  // The saved position is a top-left CORNER, and the box it was a corner of is
+  // very likely not this one: the pet may have grown, the size slider moved, a
+  // session line appeared, or the build changed under it. Put the FEET back
+  // where they were and let the corner fall where it must.
+  const savedFeet = pos ? pos.y + (brain.prefs.boxH || LEGACY_BOX_H) - (brain.prefs.footH || LEGACY_FOOT) : 0;
   const x = pos ? pos.x : wa.x + wa.width - PET_W - 40;
-  const y = pos ? pos.y + ((brain.prefs.boxH || LEGACY_BOX_H) - h) : wa.y + wa.height - h - 20;
+  const y = pos ? savedFeet - (h - box.foot) : wa.y + wa.height - h - 20;
 
   petWin = new BrowserWindow({
     x, y, width: PET_W, height: h,
@@ -68,18 +78,22 @@ function createPetWindow() {
 
 function savePosition() {
   const b = petWin.getBounds();
-  brain.command({ type: 'setPosition', position: { x: b.x, y: b.y }, boxH: b.height });
+  // The corner alone is meaningless later: save the box it is a corner of and
+  // where the feet stood inside it.
+  brain.command({ type: 'setPosition', position: { x: b.x, y: b.y }, boxH: b.height, footH: lastFoot });
 }
 
-// Grow/shrink the window to the current form and size. The FEET stay where
-// they are — the pet must not jump when it levels up or the slider moves —
-// so the top edge is what travels.
+// Grow/shrink the window to the current form, size and session count. The FEET
+// stay where they are — the pet must not jump when it levels up, when the
+// slider moves or when a session appears — so the top edge is what travels.
 function fitPetWindow(rs) {
   if (!petWin || petWin.isDestroyed()) return;
-  const want = petHeight(rs);
+  const want = petBox(rs);
   const b = petWin.getBounds();
-  if (b.height === want) return;
-  petWin.setBounds({ x: b.x, y: b.y + b.height - want, width: b.width, height: want });
+  if (b.height === want.h && lastFoot === want.foot) return;
+  const feet = b.y + b.height - lastFoot;   // …the one number that must not change
+  lastFoot = want.foot;
+  petWin.setBounds({ x: b.x, y: feet - (want.h - want.foot), width: b.width, height: want.h });
   if (wander) wander.home.y = petWin.getBounds().y; // a stroll comes home to the new box
   savePosition();                                   // the OS may have clamped it — save what stuck
 }

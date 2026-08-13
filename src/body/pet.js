@@ -13,9 +13,11 @@ const stripEl = document.getElementById('strip');
 const statsZone = document.getElementById('stats-zone');
 
 const LOGICAL_H = 130;      // art box height (see art.js)
-// Where the feet sit above the window bottom. main.js sizes the window from
-// this same table (PetArt.boxHeight) — read it, never retype it.
-const FOOT_MARGIN = PetArt.LAYOUT.footRoom;
+// Where the feet sit above the window bottom — it grows with the session
+// lines stacked under them. main.js sizes the window from this same table
+// (PetArt.boxHeight / PetArt.footRoom): read it, never retype it.
+let shownLines = 0;
+const footMargin = () => PetArt.footRoom(shownLines);
 
 let state = null;           // latest brain state
 let lastFxSeq = 0;
@@ -84,27 +86,39 @@ function consume(s) {
   }
   if (!s.bubble) { bubbleEl.classList.remove('show'); bubbleZone.classList.remove('show'); }
 
-  // stats line
+  // stats line + one line per session
   const line = s.statsLine || { mode: 'hidden' };
-  if (line.mode === 'hidden') {
-    statsEl.style.display = 'none';
-    stripEl.style.display = 'none';
-  } else {
-    statsEl.style.display = '';
-    statsEl.textContent = line.text;
-    if (line.strip && line.strip.length) {
-      stripEl.style.display = '';
-      stripEl.textContent = line.strip.join('  ·  ');
-    } else {
-      stripEl.style.display = 'none';
-    }
-  }
+  statsEl.style.display = line.mode === 'hidden' ? 'none' : '';
+  if (line.mode !== 'hidden') statsEl.textContent = line.text;
+  renderSessionLines(line.mode === 'hidden' ? [] : (line.lines || []));
 
   // bubble zone anchors just above THIS form's head at current scale
   const g = PetArt.GEOM[s.form] || PetArt.GEOM.hatchling;
-  const headroom = FOOT_MARGIN + (g.h + PetArt.LAYOUT.headGap) * (s.scale || 1);
+  const headroom = footMargin() + (g.h + PetArt.LAYOUT.headGap) * (s.scale || 1);
   bubbleZone.style.bottom = Math.min(headroom, innerHeight - 60) + 'px';
   bubbleZone.style.top = '4px';
+}
+
+// The brain hands over every live session; the WINDOW decides how many of
+// them fit under the pet (PetArt.LAYOUT.maxLines sized it), so the overflow
+// is counted off here rather than silently dropped.
+let lineSig = null;
+function renderSessionLines(lines) {
+  const max = PetArt.LAYOUT.maxLines;
+  const rows = lines.length > max
+    ? lines.slice(0, max - 1).concat([{ kind: 'more', text: `+${lines.length - max + 1} more` }])
+    : lines;
+  shownLines = rows.length;
+  const sig = rows.map(r => r.kind + '|' + r.text).join('\n');
+  if (sig === lineSig) return;              // state arrives constantly; the DOM shouldn't churn
+  lineSig = sig;
+  stripEl.textContent = '';
+  for (const r of rows) {
+    const el = document.createElement('div');
+    el.className = 'pill line ' + r.kind;
+    el.textContent = r.text;
+    stripEl.appendChild(el);
+  }
 }
 
 petAPI.onState(consume);
@@ -417,7 +431,7 @@ function frame(t) {
 
   const scale = s.scale || 1;
   const cx = innerWidth / 2;
-  const feetY = innerHeight - FOOT_MARGIN;
+  const feetY = innerHeight - footMargin();
   updateHover(t, scale, feetY);
 
   ctx2d.save();
@@ -488,16 +502,19 @@ function drawOverlays(t, motion, scale, cx, feetY, dt) {
   const g = PetArt.GEOM[state.form] || PetArt.GEOM.hatchling;
   const headTop = -g.h - 6;
 
-  if (motion.exclaim) { // notification: unmissable
-    const bob = Math.sin(t / 120) * 2;
-    ctx2d.fillStyle = '#ffb300';
-    ctx2d.strokeStyle = '#7a5600';
-    ctx2d.lineWidth = 1.2;
-    ctx2d.font = 'bold 20px -apple-system, sans-serif';
-    ctx2d.textAlign = 'center';
-    ctx2d.strokeText('!', 0, headTop - 6 + bob);
-    ctx2d.fillText('!', 0, headTop - 6 + bob);
-    ctx2d.textAlign = 'start';
+  // The '!' is worn for as long as a session is BLOCKED on you (a permission
+  // prompt), not just for the second the notification arrives — the details
+  // are on hover, but "I can't continue without you" has to survive the
+  // moment you were looking somewhere else. It clears itself the instant that
+  // session does anything at all.
+  const blocked = state.sessions && state.sessions.needsYou;
+  if (motion.exclaim || blocked) { // notification: unmissable
+    // Slow while it is just worn, urgent while the notification is landing.
+    const bob = Math.round(Math.sin(t / (motion.exclaim ? 140 : 420))) * PetArt.PX;
+    // g.h is the form's box, which allows more headroom than the ears
+    // actually use — one row back into it puts the badge on the head, not
+    // adrift above it.
+    drawPixelBang(-PetArt.PX / 2, -g.h + bob);
   }
   if (motion.sweat) {
     const drop = Math.min(8, (t % 1800) / 120);
@@ -507,6 +524,33 @@ function drawOverlays(t, motion, scale, cx, feetY, dt) {
     ctx2d.fill();
   }
   ctx2d.restore();
+}
+
+// The alert badge, in art pixels like everything else the pet wears — a
+// system-font "!" floating over a pixel sprite reads as a rendering bug, and
+// this one is worn for minutes at a time rather than flashed for a second.
+// (x, y) is the BOTTOM LEFT of the mark: two art pixels wide, so `x` is
+// nudged half a pixel left of centre by the caller.
+const BANG = [[0, 0], [1, 0], [0, 2], [1, 2], [0, 3], [1, 3], [0, 4], [1, 4], [0, 5], [1, 5]];
+function drawPixelBang(x, y) {
+  const g = PetArt.PX;
+  const cell = (c, r) => [x + c * g, y - r * g];
+  const filled = new Set(BANG.map(([c, r]) => c + ',' + r));
+  // outline first: every empty neighbour of the mark, so it survives any
+  // wallpaper underneath it
+  ctx2d.fillStyle = '#2b2b2b';
+  for (const [c, r] of BANG) {
+    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (filled.has((c + dc) + ',' + (r + dr))) continue;
+      const [px, py] = cell(c + dc, r + dr);
+      ctx2d.fillRect(px - g / 2, py, g + 0.5, g + 0.5);
+    }
+  }
+  ctx2d.fillStyle = '#ffb300';
+  for (const [c, r] of BANG) {
+    const [px, py] = cell(c, r);
+    ctx2d.fillRect(px - g / 2, py, g + 0.5, g + 0.5);
+  }
 }
 
 // A 5x5 pixel heart, one cell per art pixel.

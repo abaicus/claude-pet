@@ -106,6 +106,7 @@ test('stats line: idle collapses, active shows real telemetry, hidden toggle', (
   let line = brain.statsLine(T0);
   assert.equal(line.mode, 'idle');
   assert.equal(line.text, 'Pixel lv.0');
+  assert.deepEqual(line.lines, []);
 
   // fake a live session with ctx
   brain.sessions.noteEvent({ t: 'SessionStart', ts: T0, sid: 's1', project: 'alpha' });
@@ -113,17 +114,47 @@ test('stats line: idle collapses, active shows real telemetry, hidden toggle', (
   brain.state.greenStreak = 5;
   line = brain.statsLine(T0);
   assert.equal(line.mode, 'active');
-  assert.match(line.text, /Pixel lv\.0 │ 1 session │ ctx ~72% │ .*\/5h │ ✓×5/);
-  assert.equal(line.strip.length, 0, 'no strip for a single session');
+  // The pill is what's true of the PET; per-session facts belong to the lines
+  // and must not also be crammed in here.
+  assert.match(line.text, /Pixel lv\.0 │ .*\/5h │ ✓×5/);
+  assert.ok(!/session|ctx/.test(line.text), `session detail duplicated in the pill: ${line.text}`);
+  assert.equal(line.lines.length, 1, 'every session gets a line, even the only one');
+  assert.match(line.lines[0].text, /alpha · working · ~72%/);
 
   brain.sessions.noteEvent({ t: 'SessionStart', ts: T0, sid: 's2', project: 'beta' });
   brain.sessions.session('s2').ctxTokens = 20_000;
   line = brain.statsLine(T0);
-  assert.equal(line.strip.length, 2, 'strip appears with >1 session');
-  assert.match(line.strip[0], /alpha ~72%/, 'busiest first');
+  assert.equal(line.lines.length, 2);
 
   brain.command({ type: 'setToggle', key: 'statsLine', value: false });
   assert.equal(brain.statsLine(T0).mode, 'hidden');
+  assert.deepEqual(brain.statsLine(T0).lines, []);
+});
+
+test('session lines: whoever is waiting on you comes first, and says so', () => {
+  const { brain } = makeBrain();
+  const start = (sid, project) => brain.sessions.noteEvent({ t: 'SessionStart', ts: T0, sid, project });
+  for (const [sid, project] of [['s1', 'alpha'], ['s2', 'beta'], ['s3', 'gamma'], ['s4', 'delta']]) start(sid, project);
+  brain.sessions.session('s1').ctxTokens = 144_000;   // busiest, but merely working
+
+  // beta finished its turn 2 minutes ago; gamma is blocked on a permission
+  // prompt; delta was told it has been waiting on the human.
+  brain.sessions.noteEvent({ t: 'Stop', ts: T0 - 120_000, sid: 's2' });
+  brain.sessions.noteEvent({ t: 'Notification', ts: T0 - 30_000, sid: 's3', msg: 'Claude needs your permission to use Bash' });
+  brain.sessions.noteEvent({ t: 'Notification', ts: T0 - 5_000, sid: 's4', msg: 'Claude is waiting for your input' });
+
+  const lines = brain.statsLine(T0).lines;
+  assert.deepEqual(lines.map(l => l.kind), ['perm', 'idle', 'done', 'working'],
+    'a blocked session must outrank a busy one — that is the whole point');
+  assert.match(lines[0].text, /^! gamma · needs permission 30s$/);
+  assert.match(lines[1].text, /^… delta · waiting for you 5s$/);
+  assert.match(lines[2].text, /^✓ beta · done 2m$/);
+  assert.match(lines[3].text, /^▸ alpha · working · ~72%/, 'a working session states no age — it is now');
+
+  // and the pet wears the "!" only while something is truly BLOCKED
+  assert.equal(brain.getRenderState().sessions.needsYou, true);
+  brain.sessions.noteEvent({ t: 'PostToolUse', ts: T0, sid: 's3', tool: 'Bash' }); // permission granted
+  assert.equal(brain.getRenderState().sessions.needsYou, false, 'the badge must clear itself');
 });
 
 test('a session whose context has not been read shows no context at all', () => {
@@ -132,8 +163,9 @@ test('a session whose context has not been read shows no context at all', () => 
   brain.sessions.noteEvent({ t: 'SessionStart', ts: T0, sid: 's1', project: 'alpha' });
   const line = brain.statsLine(T0);
   assert.equal(line.mode, 'active');
-  assert.ok(!line.text.includes('ctx'), `printed a context it never read: ${line.text}`);
-  assert.match(line.text, /1 session/, 'the session itself is still real news');
+  assert.equal(line.lines.length, 1, 'the session itself is still real news');
+  assert.ok(!line.lines[0].text.includes('%'), `printed a context it never read: ${line.lines[0].text}`);
+  assert.match(line.lines[0].text, /alpha/, '…and it is still named');
 
   // …and it must not surface as a "fact" either
   brain.state.lifetimeCommits = 0;

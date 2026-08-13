@@ -247,3 +247,60 @@ test('two sessions on one transcript both get the reading', () => {
   assert.equal(reg.sessions.get('a').ctxTokens, 88_000);
   assert.equal(reg.sessions.get('b').ctxTokens, 88_000, 'a byte cursor is spent once — share the result');
 });
+
+// ---------------------------------------------------------------- status
+// Which session is waiting on the human is the question the pet exists to
+// answer, and it is read entirely from the hook stream — no guessing.
+const ev = (t, sid, extra = {}, ts = T0) => Object.assign({ t, sid, ts }, extra);
+
+test('status follows the hook stream: working → blocked → answered → done', () => {
+  const reg = new SessionRegistry({});
+  const ctx = { live: true, now: T0, rng: () => 0.5 };
+  reg.noteEvent(ev('SessionStart', 's1', { project: 'app' }), ctx);
+  assert.equal(reg.session('s1').status, 'working');
+
+  reg.noteEvent(ev('Notification', 's1', { msg: 'Claude needs your permission to use Bash' }), ctx);
+  assert.equal(reg.session('s1').status, 'perm', 'a permission ask is a block, not a nudge');
+  assert.equal(reg.summary(T0).needsYou, true);
+
+  // …answering it is any event at all from that session
+  reg.noteEvent(ev('PostToolUse', 's1', { tool: 'Bash' }), ctx);
+  assert.equal(reg.session('s1').status, 'working');
+  assert.equal(reg.summary(T0).needsYou, false);
+
+  reg.noteEvent(ev('Notification', 's1', { msg: 'Claude is waiting for your input' }), ctx);
+  assert.equal(reg.session('s1').status, 'idle', 'an idle nudge is not a permission gate');
+  assert.equal(reg.summary(T0).needsYou, false, 'only a real block wears the badge');
+
+  reg.noteEvent(ev('Stop', 's1'), ctx);
+  assert.equal(reg.session('s1').status, 'done');
+
+  // a subagent finishing is NOT the turn finishing
+  reg.noteEvent(ev('UserPromptSubmit', 's1'), ctx);
+  reg.noteEvent(ev('SubagentStop', 's1'), ctx);
+  assert.equal(reg.session('s1').status, 'working', 'a helper coming home is not your turn');
+});
+
+test('a finished turn announces itself by project, once, and never on a replay', () => {
+  const reg = new SessionRegistry({});
+  const ctx = (now, live = true) => ({ live, now, rng: () => 0.5 });
+  reg.noteEvent(ev('SessionStart', 's1', { project: 'claudy-pet' }), ctx(T0));
+
+  const fx = reg.noteEvent(ev('Stop', 's1', {}, T0 + 1000), ctx(T0 + 1000));
+  const bubble = fx.find(f => f.type === 'bubble');
+  assert.ok(bubble, 'the end of a turn is the news the pet exists for');
+  assert.match(bubble.text, /^claudy-pet · /, 'which session finished is the whole point');
+  assert.match(bubble.text, /✓$/);
+  assert.ok(!bubble.important, 'every turn ending in amber would be a siren, not a signal');
+
+  // Stop again inside the cooldown: silence (but the status still holds)
+  const again = reg.noteEvent(ev('Stop', 's1', {}, T0 + 2000), ctx(T0 + 2000));
+  assert.equal(again.length, 0, 'no repeat announcement inside the cooldown');
+  assert.equal(reg.session('s1').status, 'done');
+
+  // …and a backlog replayed at startup announces nothing at all
+  const cold = new SessionRegistry({});
+  cold.noteEvent(ev('SessionStart', 's2', { project: 'old' }), ctx(T0, false));
+  assert.deepEqual(cold.noteEvent(ev('Stop', 's2'), ctx(T0, false)), [],
+    'a day-old log must not shout about turns that ended yesterday');
+});

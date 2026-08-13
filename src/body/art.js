@@ -30,12 +30,14 @@
   // Sprite metrics in ART PIXELS. Widths are odd so there is a true centre
   // column — a kawaii face is symmetrical or it is nothing. `gap` is the
   // number of clear columns between the two eyes.
+  // Eyes are BIG — they are most of what makes the thing cute, and a 3×4 eye
+  // has no room for a catchlight that reads as one.
   const FORMS = {
-    egg:       { w: 13, h: 17, cap: 0.95, shape: 'egg', ears: 'none', crest: false, tail: 0, eyeW: 2, eyeH: 3, gap: 1, eyeF: 0.42 },
-    hatchling: { w: 17, h: 12, cap: 0.85, ears: 'none', crest: false, tail: 0, eyeW: 3, eyeH: 4, gap: 1, eyeF: 0.30 },
-    junior:    { w: 19, h: 14, cap: 0.80, ears: 'nubs', crest: false, tail: 0, eyeW: 3, eyeH: 4, gap: 2, eyeF: 0.30 },
-    senior:    { w: 23, h: 16, cap: 0.75, ears: 'ears', crest: false, tail: 5, eyeW: 4, eyeH: 5, gap: 2, eyeF: 0.32 },
-    elder:     { w: 25, h: 19, cap: 0.70, ears: 'ears', crest: true,  tail: 7, eyeW: 4, eyeH: 5, gap: 2, eyeF: 0.34 }
+    egg:       { w: 13, h: 17, cap: 0.95, shape: 'egg', ears: 'none', crest: false, tail: 0, eyeW: 2, eyeH: 3, gap: 2, eyeF: 0.40 },
+    hatchling: { w: 17, h: 12, cap: 0.85, ears: 'none', crest: false, tail: 0, eyeW: 4, eyeH: 5, gap: 1, eyeF: 0.40 },
+    junior:    { w: 19, h: 14, cap: 0.80, ears: 'nubs', crest: false, tail: 0, eyeW: 4, eyeH: 5, gap: 2, eyeF: 0.40 },
+    senior:    { w: 23, h: 16, cap: 0.75, ears: 'ears', crest: false, tail: 5, eyeW: 5, eyeH: 6, gap: 2, eyeF: 0.36 },
+    elder:     { w: 25, h: 19, cap: 0.70, ears: 'ears', crest: true,  tail: 7, eyeW: 5, eyeH: 6, gap: 2, eyeF: 0.36 }
   };
 
   const TOP_EXTRA = { none: 0, nubs: 3, ears: 4 }; // silhouette above the dome
@@ -54,13 +56,21 @@
   // macOS refuses to place any window above the menu bar: every unreserved
   // pixel up here is a pixel the pet can never be dragged past.
   const LAYOUT = {
-    footRoom: 46,    // under the feet — the stats pills stack in here
-    headGap: 14,     // logical units of air between the head and the tail
-    bubbleRoom: 74   // above that: three lines of speech, its border and shadow
+    footRoom: 30,     // under the feet — the pet's own stats pill sits in here
+    sessionLine: 20,  // …plus one of these per session line shown below it
+    maxLines: 4,      // …up to here; past that the last line says "+N more"
+    headGap: 14,      // logical units of air between the head and the tail
+    bubbleRoom: 74    // above that: three lines of speech, its border and shadow
   };
-  function boxHeight(form, scale) {
+  // How far above the window's bottom edge the feet stand. It GROWS with the
+  // per-session lines, so the box is only ever as tall as what it holds.
+  function footRoom(lines) {
+    const n = Math.max(0, Math.min(LAYOUT.maxLines, Math.round(lines || 0)));
+    return LAYOUT.footRoom + n * LAYOUT.sessionLine;
+  }
+  function boxHeight(form, scale, lines) {
     const g = GEOM[form] || GEOM.hatchling;
-    return Math.round(LAYOUT.footRoom + (g.h + LAYOUT.headGap) * (scale || 1) + LAYOUT.bubbleRoom);
+    return Math.round(footRoom(lines) + (g.h + LAYOUT.headGap) * (scale || 1) + LAYOUT.bubbleRoom);
   }
 
   const EGG = { light: '#f7f0e2', mid: '#e6dac2', dark: '#cdbc9c', outline: '#8a7a5e', speck: '#c0ab86' };
@@ -227,6 +237,23 @@
   }
 
   // ---------------------------------------------------------------- face
+  // The eye's ink, as a rounded slab. Corners come off only when there is
+  // enough eye left for the result to still read as an oval: cutting all four
+  // corners off a 3-wide eye produces a plus sign, which is precisely what the
+  // face used to wear. [lesson: seen at 3× on a contact sheet, not reasoned]
+  function eyeCells(w, h) {
+    const cells = [];
+    for (let y = 0; y < h; y++) {
+      for (let i = 0; i < w; i++) {
+        const endCol = i === 0 || i === w - 1;
+        const endRow = y === 0 || y === h - 1;
+        if (endCol && (w >= 4 ? endRow : y === h - 1)) continue;
+        cells.push([i, y]);
+      }
+    }
+    return cells;
+  }
+
   function drawEye(ctx, F, side, eyeY, opts, ramp) {
     const w = F.eyeW, h = F.eyeH;
     const inner = F.gap + 1;                       // first column of the eye
@@ -251,23 +278,38 @@
     }
 
     const droop = opts.mood === 'grumpy' ? 2 : (opts.mood === 'sad' ? 1 : 0); // squint / droop
-    for (let y = 0; y < h - droop; y++) {
-      for (let i = 0; i < w; i++) {
-        const corner = (i === 0 || i === w - 1) && (y === 0 || y === h - 1 - droop);
-        if (corner) continue;                      // rounds the oval
-        px(ctx, col(i), eyeY + y, INK);
-      }
+    const eh = h - droop;
+    for (const [i, y] of eyeCells(w, eh)) px(ctx, col(i), eyeY + y, INK);
+
+    // The shine. This is the whole difference between a black bean and an
+    // eye: one big square catchlight high in the pupil, and a small cool one
+    // low on the far side, so the eye reads as wet and round.
+    // …centred on the narrowest eye, where an off-centre highlight stops
+    // reading as a highlight and starts reading as an eyebrow.
+    const hx = w >= 3 ? 1 : 0;
+    const hy = eyeY + eh - 3;
+    // A squinted eye is too small to hold the big one — it would be more
+    // catchlight than pupil, which reads as startled rather than grumpy.
+    if (eh >= 5) {
+      for (const dx of [0, 1]) for (const dy of [0, 1]) px(ctx, col(hx + dx), hy + dy, '#fffdf5');
+    } else {
+      px(ctx, col(hx), eyeY + eh - 2, '#fffdf5');
     }
-    // a bright pixel low-inside and a dim one high-outside: wet, cute eyes
-    px(ctx, col(0), eyeY + 1, '#fffdf5');
-    px(ctx, col(w - 1), eyeY + h - 2 - droop, shade(ramp[1], 0.3));
-    // a second glint is what separates delighted from merely awake, now that
-    // both moods have open eyes
-    if (opts.mood === 'happy') px(ctx, col(w - 2), eyeY + h - 2, '#fffdf5');
+    // Delighted is that second catchlight going bright — a THIRD one just
+    // makes a busy eye, since both bottom corners are then spoken for.
+    px(ctx, col(w - 1), eyeY + 1,
+      opts.mood === 'happy' ? '#fffdf5' : mix(ramp[0], '#ffffff', 0.6), 0.9);
   }
 
   function drawMouth(ctx, F, opts, ramp, eyeY) {
-    const y = eyeY - 1;
+    // TWO rows below the eyes, never one: the smile's arms rise a row, and on
+    // the row directly under an eye they fuse with it into a single black
+    // moustache. That is what the face has always done at 4×.
+    const y = eyeY - 2;
+    // …and for the same reason the wide grin only opens up on forms with a
+    // face big enough to hold it. On the egg, five pixels of smile under two
+    // dot eyes is not a smile, it is one zigzag band across the whole face.
+    const wide = F.gap >= 2 && F.eyeW >= 4;
     const inside = mix(ramp[3], '#8a3348', 0.6);
 
     if (opts.mouthOpen > 0.35) {                   // eating / cheering
@@ -284,10 +326,15 @@
       px(ctx, -1, y, INK); px(ctx, 0, y, INK); px(ctx, 1, y, INK);
       return;
     }
+    if (opts.mood === 'happy' && wide) {
+      // A proper grin: a flat floor with the corners turned up. Widening the
+      // little ∨ instead leaves a hole under its centre, and four pixels with
+      // a hole in the middle read as two small marks, not one big smile.
+      px(ctx, -1, y, INK); px(ctx, 0, y, INK); px(ctx, 1, y, INK);
+      px(ctx, -2, y + 1, INK); px(ctx, 2, y + 1, INK);
+      return;
+    }
     px(ctx, -1, y + 1, INK); px(ctx, 0, y, INK); px(ctx, 1, y + 1, INK); // ∪
-    // A wider ∪ — properly pleased. It grows sideways along the arms of the
-    // smile, never upward: one row higher and it runs into the eyes.
-    if (opts.mood === 'happy') { px(ctx, -2, y + 1, INK); px(ctx, 2, y + 1, INK); }
   }
 
   function drawFace(ctx, F, hw, opts, ramp) {
@@ -298,12 +345,17 @@
     for (const s of [-1, 1]) drawEye(ctx, F, s, eyeY, opts, ramp);
     ctx.restore();
 
-    if (!opts.sleeping) {                          // blush, outside each eye
+    if (!opts.sleeping) {
+      // Cheeks: one row BELOW the eyes, level with the smile, and clamped
+      // inside the silhouette. Beside them (the old row) they had to dodge a
+      // wider eye on the narrow forms and ended up on the outline itself.
       const bc = blushColor(ramp);
-      const x0 = F.gap + F.eyeW + 1;
+      const row = Math.max(0, eyeY - 1);
+      const edge = hw[Math.min(hw.length - 1, row)] - 1;
+      const x0 = Math.min(F.gap + F.eyeW + 1, edge);
       for (const s of [-1, 1]) {
-        px(ctx, s * x0, eyeY, bc, 0.9);
-        px(ctx, s * (x0 + 1), eyeY, bc, 0.6);
+        px(ctx, s * x0, row, bc, 0.9);
+        if (x0 + 1 <= edge) px(ctx, s * (x0 + 1), row, bc, 0.6);
       }
     }
     drawMouth(ctx, F, opts, ramp, eyeY);
@@ -506,7 +558,7 @@
     return out;
   }
 
-  const PetArt = { drawPet, GEOM, FEET_Y, PX, LAYOUT, boxHeight, shade, bodyColor };
+  const PetArt = { drawPet, GEOM, FEET_Y, PX, LAYOUT, footRoom, boxHeight, shade, bodyColor };
   if (typeof module !== 'undefined' && module.exports) module.exports = PetArt;
   else global.PetArt = PetArt;
 

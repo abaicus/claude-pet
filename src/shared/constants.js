@@ -79,6 +79,35 @@ const ACCESSORIES = [
   { id: 'sparkles',  name: 'Sparkles',   level: 10 }
 ];
 
+// ---------------------------------------------------------------- sessions
+// What a session is DOING right now, read from the hook stream. This is the
+// question the pet exists to answer when four terminals are buried behind
+// each other: which one is waiting on me?
+//
+// `rank` is that answer's priority — a session that cannot continue without
+// you outranks one that is merrily working — and it is what the lines under
+// the pet are sorted by. The glyph and label are the whole vocabulary; they
+// live here so the registry (which sets the status) and the brain (which
+// writes the line) cannot drift apart.
+const SESSION_STATUS = {
+  perm:    { rank: 0, glyph: '!', label: 'needs permission' },
+  idle:    { rank: 1, glyph: '…', label: 'waiting for you' },
+  done:    { rank: 2, glyph: '✓', label: 'done' },
+  working: { rank: 3, glyph: '▸', label: 'working' }
+};
+
+// A duration a human reads at a glance. Seconds up to a minute, then minutes,
+// then hours — never "0h" and never three units of precision nobody wanted.
+function ago(ms) {
+  if (!(ms > 0)) return '';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h${m % 60 ? m % 60 + 'm' : ''}`;
+}
+
 // ---------------------------------------------------------------- tuning
 const TUNING = {
   foodPerPrompt: 6,
@@ -131,6 +160,7 @@ const TUNING = {
   ctxReportEveryMs: 10 * 60 * 1000,
   burnWindowMs: 5 * 60 * 60 * 1000,
   sessionDeadAfterMs: 30 * 60 * 1000,
+  doneAnnounceMs: 25 * 1000,  // …between "your turn" calls FOR THE SAME session
   maxNameLen: 12
 };
 
@@ -166,5 +196,5 @@ module.exports = {
   petDir, claudeSettingsPath, FILES,
   XP_LADDER, MAX_LEVEL, FORMS, formForLevel, levelForXp,
   PALETTES, PALETTE_NAMES, ACCESSORIES, TUNING, IPC,
-  CTX_WINDOWS, contextWindowFor
+  CTX_WINDOWS, contextWindowFor, SESSION_STATUS, ago
 };

@@ -135,7 +135,7 @@ class Brain extends EventEmitter {
       // replay) still move stats but fire no fx.
       const live = this.replayDone && !meta.replay && (now - (ev.ts || 0)) < LIVE_EVENT_MAX_AGE_MS;
       const ctx = { now, rng: this.rng, live };
-      this.sessions.noteEvent(ev);
+      this.applyFx(this.sessions.noteEvent(ev, ctx));
       const fx = reduce(this.state, ev, ctx);
       this.applyFx(fx);
       this.log.push(ev);
@@ -360,8 +360,10 @@ class Brain extends EventEmitter {
       case 'setPosition': {
         if (cmd.position && typeof cmd.position.x === 'number' && typeof cmd.position.y === 'number') {
           this.prefs.position = { x: Math.round(cmd.position.x), y: Math.round(cmd.position.y) };
-          // A corner means nothing without the box it belongs to.
+          // A corner means nothing without the box it belongs to — nor without
+          // where the feet stood inside that box.
           if (cmd.boxH > 0) this.prefs.boxH = Math.round(cmd.boxH);
+          if (cmd.footH > 0) this.prefs.footH = Math.round(cmd.footH);
         }
         break;
       }
@@ -526,26 +528,50 @@ class Brain extends EventEmitter {
   }
 
   statsLine(now) {
-    if (!this.prefs.statsLine) return { mode: 'hidden', text: '', strip: [] };
+    if (!this.prefs.statsLine) return { mode: 'hidden', text: '', lines: [] };
     const s = this.state;
     const idPart = `${this.prefs.name} lv.${s.level}`;
     const todo = this.freshTodos(now);
     const todoPart = todo ? ` │ ☑ ${todo.d}/${todo.n}` : '';
     const sum = this.sessions.summary(now);
-    if (sum.count === 0) return { mode: 'idle', text: idPart + todoPart, strip: [] };
+    if (sum.count === 0) return { mode: 'idle', text: idPart + todoPart, lines: [] };
 
-    // A context we have not read is left out entirely — printing ~0% for
-    // "don't know yet" is the kind of small lie that makes the whole readout
-    // untrustworthy.
-    const ctxPart = sum.worstPct === null ? '' : ` │ ctx ~${Math.round(sum.worstPct * 100)}%`;
-    let text = `${idPart} │ ${sum.count} session${sum.count === 1 ? '' : 's'}${ctxPart} │ ${sum.burn}/5h`;
+    // The pill is what's true of the PET; the per-session facts (which one,
+    // how full, what it's doing) each get their own line below it, so nothing
+    // is stated twice and no session hides behind a "worst of" figure.
+    let text = `${idPart} │ ${sum.burn}/5h`;
     if (s.greenStreak > 0) text += ` │ ✓×${s.greenStreak}`;
     text += todoPart;
-    const strip = sum.count > 1
-      ? sum.sessions.slice(0, 3).map(x => x.pct === null ? x.project : `${x.project} ~${Math.round(x.pct * 100)}%`)
-      : [];
-    if (sum.count > 3) strip.push(`+${sum.count - 3}`);
-    return { mode: 'active', text, strip };
+    return { mode: 'active', text, lines: this.sessionLines(sum, now) };
+  }
+
+  /**
+   * One line per live session: which project, what it is doing, how full its
+   * context is. Sorted by who is waiting on whom — a session that cannot
+   * continue without you comes first, a happily working one comes last —
+   * because the whole point is answering "which terminal do I go to?".
+   *
+   * Every session gets a line. How many of them fit under the pet is the
+   * window's business, not the brain's (see PetArt.LAYOUT.maxLines).
+   */
+  sessionLines(sum, now) {
+    const rank = (x) => (C.SESSION_STATUS[x.status] || C.SESSION_STATUS.working).rank;
+    return sum.sessions.slice()
+      .sort((a, b) => rank(a) - rank(b) || (b.pct === null ? -1 : b.pct) - (a.pct === null ? -1 : a.pct))
+      .map(x => {
+        const st = C.SESSION_STATUS[x.status] || C.SESSION_STATUS.working;
+        // "working" is the present tense; the rest are things that STARTED at
+        // a moment, and how long ago is most of what you want to know.
+        const age = x.status === 'working' ? '' : C.ago(now - (x.statusAt || now));
+        // A context nobody has read is left off entirely — printing ~0% for
+        // "don't know yet" is the small lie that makes a readout untrustworthy.
+        const ctxPart = x.pct === null ? '' : ` · ~${Math.round(x.pct * 100)}%`;
+        const name = x.project.length > 18 ? x.project.slice(0, 17) + '…' : x.project;
+        return {
+          kind: x.status,
+          text: `${st.glyph} ${name} · ${st.label}${age ? ' ' + age : ''}${ctxPart}`
+        };
+      });
   }
 
   getRenderState() {

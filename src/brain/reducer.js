@@ -548,7 +548,9 @@ function reduce(state, ev, ctx) {
       touch(state, ev, false);
       addEnergy(state, TUNING.stopEnergy / 2);
       sound(fx, ctx, 'done');
-      say(fx, ctx, 0.06, 'stop');
+      // No quip here: the session registry announces this one by name
+      // ("claudy-pet · done ✓ your turn"), and which session finished is the
+      // only part of "Claude stopped" a human can't already see.
       break;
     }
     case 'SubagentStop': {

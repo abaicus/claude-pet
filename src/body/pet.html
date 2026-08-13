@@ -67,13 +67,20 @@
      On demand — a desktop pet that permanently wears a status bar is a widget.
      pet.js raises it when the cursor comes near (see updateHover). */
   #stats-zone {
-    position: absolute; left: 0; right: 0; bottom: 6px;
-    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    position: absolute; left: 0; right: 0; bottom: 5px;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
     pointer-events: none;
     opacity: 0; transform: translateY(3px);
     transition: opacity 140ms steps(3), transform 140ms steps(3);
   }
   #stats-zone.show { opacity: 1; transform: translateY(0); }
+  /* One line per live session, stacked under the pet's own pill. The window
+     is sized to hold exactly these (PetArt.footRoom), so their height is a
+     contract: 17px of pill + 3px of gap = LAYOUT.sessionLine. */
+  /* width:100% is load-bearing: the pills cap themselves against their
+     parent, and a shrink-to-fit strip would clip the longest line to the
+     width of the strip it is itself defining. */
+  #strip { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 3px; }
   /* A small pixel plate rather than floating text: same cream paper, hard
      border and hard shadow as the speech bubble, so the two read as a set. */
   .pill {
@@ -88,20 +95,29 @@
     max-width: calc(100% - 16px);
     overflow: hidden; text-overflow: ellipsis;
   }
-  .pill.strip {
+  /* A session line. The status is the news, so it is what carries the colour:
+     amber = it cannot continue without you, cream = your turn, faded = it is
+     busy and needs nothing. */
+  .pill.line {
     font-size: 8.5px; padding: 1px 5px 2px;
-    background: #ece9d8; color: rgba(43, 43, 43, 0.75);
+    background: #ece9d8; color: rgba(43, 43, 43, 0.8);
     box-shadow: 2px 2px 0 rgba(43, 43, 43, 0.55);
   }
+  .pill.line.perm { background: #ffd76e; color: #2b2b2b; font-weight: 700; box-shadow: 2px 2px 0 #2b2b2b; }
+  .pill.line.idle { background: #ffeec2; color: #2b2b2b; box-shadow: 2px 2px 0 #2b2b2b; }
+  .pill.line.done { background: #fffef2; color: #2b2b2b; box-shadow: 2px 2px 0 #2b2b2b; }
+  .pill.line.working { opacity: 0.72; }
+  .pill.line.more { opacity: 0.6; letter-spacing: 0.5px; }
 </style>
 </head>
 <body>
   <div id="stage">
     <canvas id="pet"></canvas>
     <div id="bubble-zone"><div id="bubble"></div></div>
+    <!-- the pet's own pill sits closest to its feet; its sessions stack below -->
     <div id="stats-zone">
-      <div class="pill strip" id="strip" style="display:none"></div>
       <div class="pill" id="stats" style="display:none"></div>
+      <div id="strip"></div>
     </div>
   </div>
   <script src="art.js"></script>

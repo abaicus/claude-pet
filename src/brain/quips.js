@@ -57,7 +57,10 @@ const POOLS = {
   sessionClear: ['clean slate!', 'fresh start~', 'tabula rasa!'],
   sessionEnd: ['bye bye 👋', 'good session!', 'see you soon~', 'nap time?'],
   sessionCleared: ['poof, context gone', 'all forgotten~'],
-  stop: ['done thinking!', 'your turn~', 'ta-da'],
+  // Prefixed with the project that finished, so it always answers "which
+  // one?" even when the flavor is silly. See SessionRegistry.noteEvent.
+  stop: ['done thinking!', 'your turn~', 'ta-da', 'all yours!', 'that\'s my bit done',
+    'over to you~', 'finished!', 'stopped — your move'],
   preCompact: ['compacting memories…', 'folding thoughts neatly', 'tidying context'],
   preCompactAuto: ['context is full — packing it down', 'squeezing the memories…'],
   waiting: ['waiting on you~', 'your move!', '*taps foot politely*'],
