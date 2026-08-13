@@ -37,7 +37,7 @@ function addXp(state, amount, fx, ctx) {
       if (newForm !== oldForm) {
         fx.push({ type: 'anim', name: 'party', big: true });
         fx.push({ type: 'bubble', text: pick(ctx.rng, 'evolve'), kind: 'evolve' });
-        fx.push({ type: 'sound', name: 'transform' });
+        fx.push({ type: 'sound', name: newForm === 'hatchling' ? 'hatch' : 'transform' });
         fx.push({ type: 'milestone', name: 'evolve', form: newForm, level: state.level });
       } else {
         fx.push({ type: 'anim', name: 'party', big: false });
@@ -146,6 +146,7 @@ function reduceBash(state, ev, fx, ctx) {
       break;
     }
     case 'tests-unknown': {
+      sound(fx, ctx, 'peek');
       say(fx, ctx, 0.3, 'testsUnknown');
       break;
     }
@@ -172,9 +173,9 @@ function reduceBash(state, ev, fx, ctx) {
     }
     case 'push': case 'merge': case 'install':
     case 'branch': case 'stash': case 'build': {
-      const pools = { push: 'push', merge: 'merge', install: 'install', branch: 'branch', stash: 'stash', build: 'build' };
-      sound(fx, ctx, 'ding');
-      say(fx, ctx, 0.7, pools[c.kind]);
+      // motif name == classified kind for these six
+      sound(fx, ctx, c.kind);
+      say(fx, ctx, 0.7, c.kind);
       addXp(state, TUNING.smallCmdXp, fx, ctx);
       break;
     }
@@ -199,10 +200,9 @@ function reduce(state, ev, ctx) {
       touch(state, ev, true);
       addFood(state, TUNING.foodPerPrompt);
       anim(fx, ctx, 'eat');
-      sound(fx, ctx, 'prompt');
-      if (state.food > 150) say(fx, ctx, 0.5, 'promptChonk');
-      else if (state.food < 10 + TUNING.foodPerPrompt) say(fx, ctx, 0.6, 'promptStarving');
-      else say(fx, ctx, 0.25, 'prompt');
+      if (state.food > 150) { sound(fx, ctx, 'chonk'); say(fx, ctx, 0.5, 'promptChonk'); }
+      else if (state.food < 10 + TUNING.foodPerPrompt) { sound(fx, ctx, 'growl'); say(fx, ctx, 0.6, 'promptStarving'); }
+      else { sound(fx, ctx, 'prompt'); say(fx, ctx, 0.25, 'prompt'); }
       break;
     }
     case 'PreToolUse': {
@@ -249,6 +249,9 @@ function reduce(state, ev, ctx) {
         sound(fx, ctx, 'sad');
         say(fx, ctx, 0.4, 'toolFail');
       } else if (isQuietTool(tool)) {
+        if (tool.startsWith('mcp__') || tool.startsWith('ListMcpResources')) sound(fx, ctx, 'mcp');
+        else if (tool === 'WebFetch' || tool === 'WebSearch') sound(fx, ctx, 'web');
+        else sound(fx, ctx, 'peek');
         say(fx, ctx, 0.04, 'whisper');
       }
       break;
@@ -288,16 +291,19 @@ function reduce(state, ev, ctx) {
     case 'Stop': {
       touch(state, ev, false);
       addEnergy(state, TUNING.stopEnergy / 2);
+      sound(fx, ctx, 'done');
       say(fx, ctx, 0.06, 'stop');
       break;
     }
     case 'SubagentStop': {
       touch(state, ev, false);
+      sound(fx, ctx, 'minion');
       say(fx, ctx, 0.05, 'whisper');
       break;
     }
     case 'PreCompact': {
       touch(state, ev, true);
+      sound(fx, ctx, 'compact');
       say(fx, ctx, 0.9, 'preCompact');
       break;
     }
@@ -329,7 +335,10 @@ function tick(state, now, ctx) {
   // loneliness after 30 quiet minutes
   if (idle > TUNING.lonelyAfterMin * 60 * 1000 && state.lastMeaningfulAt) {
     addMood(state, TUNING.lonelyMoodPerMin * dtMin);
-    if (!state.sleeping) say(fx, ctx, 0.04 * dtMin, 'lonely');
+    if (!state.sleeping && ctx.rng() < 0.04 * dtMin) {
+      sound(fx, ctx, 'lonely');
+      say(fx, ctx, 1, 'lonely');
+    }
   }
 
   // sleep requires low energy AND ≥1 min of event silence — never doze mid-work

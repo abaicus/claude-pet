@@ -66,12 +66,13 @@ function render(s) {
   $('scale').value = s.scale;
   $('scale-label').textContent = Math.round(s.scale * 100) + '%';
   $('t-sound').checked = s.soundOn;
-  $('volume').value = s.volume;
+  if (document.activeElement !== $('volume')) $('volume').value = s.volume;
+  $('volume-label').textContent = Math.round(s.volume * 100) + '%';
 
   const hs = $('hook-status');
-  if (s.hooks.ok && s.hooks.installed) { hs.textContent = 'installed ✓'; hs.className = ''; }
-  else if (s.hooks.ok) { hs.textContent = 'not installed'; hs.className = ''; }
-  else { hs.textContent = s.hooks.reason || 'error'; hs.className = 'bad'; }
+  if (s.hooks.ok && s.hooks.installed) { hs.textContent = 'installed ✓'; hs.className = 'statline'; }
+  else if (s.hooks.ok) { hs.textContent = 'not installed'; hs.className = 'statline'; }
+  else { hs.textContent = s.hooks.reason || 'error'; hs.className = 'statline bad'; }
 
   // debug state sliders reflect the brain's truth unless being dragged
   const dbg = [
@@ -110,12 +111,16 @@ $('volume').addEventListener('input', () => {
   if (!suppress) petAPI.command({ type: 'setSound', volume: Number($('volume').value) });
 });
 $('hooks-install').addEventListener('click', () => petAPI.command({ type: 'installHooks' }));
+$('close').addEventListener('click', () => petAPI.closeSettings());
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') petAPI.closeSettings();
+});
 $('hooks-uninstall').addEventListener('click', () => petAPI.command({ type: 'uninstallHooks' }));
 
 // ------------------------------------------------------------------ reset: arm → sure? → REALLY sure? (4s auto-disarm)
 const resetBtn = $('reset');
 let resetStage = 0, disarmTimer = null;
-const RESET_LABELS = ['Reset to lv.0…', 'sure?', 'REALLY sure?'];
+const RESET_LABELS = ['reset to lv.0…', 'sure?', 'REALLY sure?'];
 function disarm() {
   resetStage = 0;
   resetBtn.textContent = RESET_LABELS[0];
@@ -184,9 +189,11 @@ for (const a of DEBUG_ANIMS) {
   $('debug-anims').appendChild(b);
 }
 const DEBUG_SOUNDS = [
-  'prompt', 'eat', 'pet', 'treat', 'commit', 'green', 'red', 'merge', 'deploy',
-  'combo', 'milestone', 'levelup', 'transform', 'equip', 'ding', 'gossip',
-  'notify', 'warn', 'sad', 'sleep', 'wake', 'bye'
+  'commit', 'green', 'red', 'merge', 'push', 'branch', 'stash', 'install', 'build', 'deploy',
+  'eat', 'prompt', 'growl', 'chonk', 'pet', 'treat', 'nope', 'sad', 'lonely', 'wake', 'sleep', 'bye',
+  'peek', 'web', 'mcp', 'done', 'minion', 'compact', 'gossip', 'ding',
+  'levelup', 'transform', 'hatch', 'milestone', 'combo', 'equip', 'reset',
+  'notify', 'warn', 'hint'
 ];
 for (const snd of DEBUG_SOUNDS) {
   const b = document.createElement('button');

@@ -77,6 +77,7 @@ class SessionRegistry {
         });
       } else if (pct >= TUNING.ctxWarn1 && !s.warned75) {
         s.warned75 = true;
+        fx.push({ type: 'sound', name: 'hint', important: true });
         fx.push({
           type: 'bubble', important: true, kind: 'ctx-warning',
           text: `${this.label(s)} ctx ~${Math.round(pct * 100)}% — /compact soon!`

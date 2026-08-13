@@ -27,13 +27,23 @@ the hook script is fire-and-forget and can never block or fail a session.
 - **Left-click** the pet: petting (~45% of the time it answers with a real
   session fact). **Double-click**: cookie treat (5-min cooldown).
 - **Drag** anywhere; position persists.
-- **Right-click** or the **tray icon**: Settings…, click-through toggle
-  (escape hatch: `⌘⌥P` global shortcut — always works), reinstall/uninstall
-  hooks, quit.
+- **Right-click** or the **tray icon**: settings, treat, hide/show, sounds,
+  click-through, reinstall/uninstall hooks, quit.
+- **Shortcuts** (real global ones — a tray menu accelerator is only a label
+  on macOS, so each is registered for real, and the menu shows a key only if
+  the OS actually granted it):
+
+  | `⌘⌥,` settings | `⌘⌥T` treat | `⌘⌥V` hide/show |
+  |---|---|---|
+  | **`⌘⌥M`** sounds | **`⌘⌥P`** click-through | **`⌘⌥Q`** quit |
+
+  `⌘⌥P` is the escape hatch: a click-through pet can't offer its own way back.
 - **Settings**: name, 12 palettes, 12 level-locked accessories, speech
   bubble / stats line / glow toggles, size slider, sounds (synthesized
   chiptune, **off by default** — important notifications always chime),
-  danger-zone reset (survives: customization, sound settings, event cursor).
+  danger-zone reset (survives: customization, sound settings, event cursor),
+  and debug sections (set level/stats, fire fake events through the real
+  reducer, trigger any animation or sound). `esc` or `✕` closes it.
 
 The pet levels 0–10 through five forms (egg → hatchling → junior → senior →
 elder) on xp from commits, green tests, PRs, deploys and edits. It parses

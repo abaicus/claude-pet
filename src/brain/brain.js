@@ -99,7 +99,10 @@ class Brain extends EventEmitter {
     try {
       const res = installer.installHooks({ settingsPath: this.settingsPath, petDirPath: this.dir });
       this.hooksStatus = { installed: res.ok, ok: res.ok, reason: res.reason || null };
-      if (!res.ok) this.pushBubble({ text: pick(this.rng, 'hooksBroken'), important: true, kind: 'hooks' });
+      if (!res.ok) {
+        this.pushBubble({ text: pick(this.rng, 'hooksBroken'), important: true, kind: 'hooks' });
+        this.applyFx([{ type: 'sound', name: 'warn', important: true }]);
+      }
     } catch (err) {
       this.hooksStatus = { installed: false, ok: false, reason: err.message };
     }
@@ -251,15 +254,17 @@ class Brain extends EventEmitter {
         }
         if (this.rng() < TUNING.petFactChance) {
           this.pushBubble({ text: this.pickFact(now), kind: 'fact' });
+          this.applyFx([{ type: 'sound', name: 'ding' }]);
         } else {
           this.pushBubble({ text: pick(this.rng, 'petted'), kind: 'petted' });
+          this.applyFx([{ type: 'sound', name: 'pet' }]);
         }
-        this.applyFx([{ type: 'sound', name: 'pet' }]);
         break;
       }
       case 'treat': {
         if (now - this.state.treatAt < TUNING.treat.cooldownMs) {
           this.pushBubble({ text: pick(this.rng, 'treatFull'), kind: 'treatFull' });
+          this.applyFx([{ type: 'sound', name: 'nope' }]);
           result = { ok: false, reason: 'cooldown' };
           break;
         }
@@ -291,6 +296,7 @@ class Brain extends EventEmitter {
         const acc = C.ACCESSORIES.find(a => a.id === cmd.accessory);
         if (!acc) { result = { ok: false, reason: 'unknown accessory' }; break; }
         if (this.state.level < acc.level) {
+          this.applyFx([{ type: 'sound', name: 'nope' }]);
           result = { ok: false, reason: `locked until lv.${acc.level}` }; // brain enforces, not UI
           break;
         }
@@ -335,6 +341,7 @@ class Brain extends EventEmitter {
         this.bubble = null;
         this.prefs.accessory = null; // reset wipes accessory per plan
         this.pushBubble({ text: pick(this.rng, 'reset'), kind: 'reset' });
+        this.applyFx([{ type: 'sound', name: 'reset' }]);
         this.stateSaver.flush();
         break;
       }
@@ -355,10 +362,11 @@ class Brain extends EventEmitter {
           if (acc && lvl < acc.level) this.prefs.accessory = null;
         }
         if (lvl > oldLevel) {
-          const evolved = C.formForLevel(lvl) !== oldForm;
+          const newForm = C.formForLevel(lvl);
+          const evolved = newForm !== oldForm;
           this.applyFx([
             { type: 'anim', name: 'party', big: evolved },
-            { type: 'sound', name: evolved ? 'transform' : 'levelup' },
+            { type: 'sound', name: evolved ? (newForm === 'hatchling' ? 'hatch' : 'transform') : 'levelup' },
             { type: 'bubble', text: pick(this.rng, evolved ? 'evolve' : 'levelUp'), kind: 'levelUp' }
           ]);
         }
@@ -432,10 +440,11 @@ class Brain extends EventEmitter {
     if (newLevel > this.state.level) {
       const oldForm = C.formForLevel(this.state.level);
       this.state.level = newLevel;
-      const evolved = C.formForLevel(newLevel) !== oldForm;
+      const newForm = C.formForLevel(newLevel);
+      const evolved = newForm !== oldForm;
       this.applyFx([
         { type: 'anim', name: 'party', big: evolved },
-        { type: 'sound', name: evolved ? 'transform' : 'levelup' },
+        { type: 'sound', name: evolved ? (newForm === 'hatchling' ? 'hatch' : 'transform') : 'levelup' },
         { type: 'bubble', text: pick(this.rng, evolved ? 'evolve' : 'levelUp'), kind: 'levelUp' }
       ]);
     }

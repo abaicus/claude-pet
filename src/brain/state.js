@@ -56,7 +56,7 @@ function defaultPrefs() {
     glow: true,
     scale: 1,
     soundOn: false,        // off by default — deliberate
-    volume: 0.5,
+    volume: 0.7,
     clickThrough: false,
     position: null         // {x, y} — persists separately from pet state
   };

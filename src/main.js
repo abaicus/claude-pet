@@ -9,7 +9,6 @@ const { IPC, petDir, claudeSettingsPath } = require('./shared/constants');
 const { trayIconPngs } = require('./chrome/tray-icon');
 
 const PET_W = 320, PET_H = 420;
-const CLICK_THROUGH_SHORTCUT = 'CommandOrControl+Alt+P';
 
 let brain;
 let petWin = null;
@@ -58,8 +57,11 @@ function createPetWindow() {
 function createSettingsWindow() {
   abortWander();
   if (settingsWin) { settingsWin.show(); settingsWin.focus(); return; }
+  // Frameless + transparent: the page draws its own card and titlebar, in the
+  // same pixel language as the speech bubble.
   settingsWin = new BrowserWindow({
-    width: 400, height: 720, resizable: true, minWidth: 400, maxWidth: 480,
+    width: 408, height: 700, minWidth: 380, maxWidth: 520, minHeight: 300,
+    frame: false, transparent: true, hasShadow: false, resizable: true,
     title: 'claude-pet settings', fullscreenable: false, maximizable: false,
     webPreferences: {
       preload: path.join(__dirname, 'body', 'preload.js'),
@@ -92,22 +94,76 @@ function toggleClickThrough() {
   applyClickThrough(!brain.prefs.clickThrough);
 }
 
+// ------------------------------------------------------------------ shortcuts
+// A tray menu's `accelerator` is only a LABEL on macOS — it never fires, since
+// a dockless app has no key window to receive it. So every shortcut here is a
+// real global one, and the menu only claims the ones the OS actually granted.
+// Combos avoid documented system shortcuts (⌘⌥H is Hide Others, etc.).
+const SHORTCUTS = [
+  { id: 'settings', accel: 'CommandOrControl+Alt+,', run: () => createSettingsWindow() },
+  { id: 'treat', accel: 'CommandOrControl+Alt+T', run: () => brain.command({ type: 'treat' }) },
+  { id: 'visible', accel: 'CommandOrControl+Alt+V', run: () => togglePetVisible() },
+  { id: 'sound', accel: 'CommandOrControl+Alt+M', run: () => toggleSound() },
+  { id: 'clickThrough', accel: 'CommandOrControl+Alt+P', run: () => toggleClickThrough() },
+  { id: 'quit', accel: 'CommandOrControl+Alt+Q', run: () => app.quit() }
+];
+const granted = new Set();
+
+function registerShortcuts() {
+  for (const s of SHORTCUTS) {
+    try { if (globalShortcut.register(s.accel, s.run)) granted.add(s.id); } catch (_) { /* taken */ }
+  }
+}
+
+// Spread into a menu item: shows the key only if we really hold it.
+function key(id) {
+  if (!granted.has(id)) return {};
+  const s = SHORTCUTS.find(x => x.id === id);
+  return { accelerator: s.accel, registerAccelerator: false }; // global one already fires it
+}
+
+function togglePetVisible() {
+  if (!petWin || petWin.isDestroyed()) return;
+  abortWander();
+  if (petWin.isVisible()) petWin.hide(); else petWin.showInactive();
+  rebuildTray();
+}
+
+function toggleSound() {
+  const on = !brain.prefs.soundOn;
+  brain.command({ type: 'setSound', on });
+  if (on) brain.command({ type: 'playSound', name: 'ding' }); // hear what you turned on
+  rebuildTray();
+}
+
 // ------------------------------------------------------------------ tray
 function buildMenu() {
   // One lean menu shared by tray and right-click. Nothing else.
+  const hidden = petWin && !petWin.isDestroyed() && !petWin.isVisible();
   return Menu.buildFromTemplate([
-    { label: 'Settings…', click: () => createSettingsWindow() },
+    { label: 'Settings…', click: () => createSettingsWindow(), ...key('settings') },
+    { type: 'separator' },
+    { label: 'Give a treat', click: () => brain.command({ type: 'treat' }), ...key('treat') },
+    { label: hidden ? 'Show pet' : 'Hide pet', click: () => togglePetVisible(), ...key('visible') },
     {
-      label: 'Click-through (⌘⌥P)',
+      label: 'Sounds',
+      type: 'checkbox',
+      checked: !!brain.prefs.soundOn,
+      click: () => toggleSound(),
+      ...key('sound')
+    },
+    {
+      label: 'Click-through',
       type: 'checkbox',
       checked: !!brain.prefs.clickThrough,
-      click: () => toggleClickThrough()
+      click: () => toggleClickThrough(),
+      ...key('clickThrough')
     },
     { type: 'separator' },
     { label: 'Reinstall Claude hooks', click: () => brain.command({ type: 'installHooks' }) },
     { label: 'Uninstall Claude hooks', click: () => brain.command({ type: 'uninstallHooks' }) },
     { type: 'separator' },
-    { label: 'Quit claude-pet', click: () => app.quit() }
+    { label: 'Quit claude-pet', click: () => app.quit(), ...key('quit') }
   ]);
 }
 
@@ -148,7 +204,7 @@ function startCursorFeed() {
 // After ~3 idle minutes the pet may stroll; it always returns home. Any
 // grab, menu, settings-open, or click-through toggle aborts the stroll.
 function maybeStartWander() {
-  if (wander || !petWin || petWin.isDestroyed()) return;
+  if (wander || !petWin || petWin.isDestroyed() || !petWin.isVisible()) return;
   const rs = brain.getRenderState();
   if (!rs.wanderOk || rs.clickThrough) return;
   if (Math.random() > 0.30) return;
@@ -214,6 +270,10 @@ function wireIpc() {
     }
   });
 
+  ipcMain.on(IPC.closeSettings, () => {
+    if (settingsWin && !settingsWin.isDestroyed()) settingsWin.close();
+  });
+
   ipcMain.on(IPC.contextMenu, () => {
     abortWander();
     if (petWin) buildMenu().popup({ window: petWin });
@@ -233,7 +293,7 @@ app.whenReady().then(() => {
   createTray();
   startCursorFeed();
 
-  globalShortcut.register(CLICK_THROUGH_SHORTCUT, toggleClickThrough);
+  registerShortcuts();
 
   setInterval(maybeStartWander, 45 * 1000);
 
