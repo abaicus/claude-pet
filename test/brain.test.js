@@ -126,6 +126,24 @@ test('stats line: idle collapses, active shows real telemetry, hidden toggle', (
   assert.equal(brain.statsLine(T0).mode, 'hidden');
 });
 
+test('a session whose context has not been read shows no context at all', () => {
+  const { brain } = makeBrain();
+  brain.prefs.name = 'Pixel';
+  brain.sessions.noteEvent({ t: 'SessionStart', ts: T0, sid: 's1', project: 'alpha' });
+  const line = brain.statsLine(T0);
+  assert.equal(line.mode, 'active');
+  assert.ok(!line.text.includes('ctx'), `printed a context it never read: ${line.text}`);
+  assert.match(line.text, /1 session/, 'the session itself is still real news');
+
+  // …and it must not surface as a "fact" either
+  brain.state.lifetimeCommits = 0;
+  brain.state.greenStreak = 0;
+  for (let i = 0; i < 40; i++) {
+    const fact = brain.pickFact(T0, true);
+    if (fact) assert.ok(!fact.includes('ctx'), `invented a context reading: ${fact}`);
+  }
+});
+
 test('brain end-to-end: events file → tailer → state, cursor persists', async () => {
   const { brain, dir } = makeBrain();
   const eventsFile = path.join(dir, 'events.jsonl');

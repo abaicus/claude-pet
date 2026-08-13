@@ -10,14 +10,24 @@ const path = require('path');
 const SRC = path.join(__dirname, '..', 'src');
 const petJs = () => fs.readFileSync(path.join(SRC, 'body', 'pet.js'), 'utf8');
 
+const durTable = (name) => {
+  const body = petJs().match(new RegExp(`const ${name} = \\{([\\s\\S]*?)\\};`))[1];
+  return [...body.matchAll(/([a-zA-Z]+):\s*(\d+)/g)].map(m => [m[1], +m[2]]);
+};
+
+// Fidgets the renderer plays on its own initiative. They are NOT part of the
+// brain seam — nothing in the brain may name one — so they are tracked
+// separately and excluded from the dead-weight check below.
+const idleAnims = () => new Set(durTable('IDLE_DUR').map(([n]) => n));
+
 // Names the renderer can actually play: it either has a duration entry or is
 // handled explicitly in startAnim.
 function knownAnims() {
   const src = petJs();
-  const table = src.match(/const ANIM_DUR = \{([\s\S]*?)\};/)[1];
-  const names = new Set([...table.matchAll(/([a-zA-Z]+):\s*\d+/g)].map(m => m[1]));
+  const names = new Set(durTable('ANIM_DUR').map(([n]) => n));
   names.delete('partyBig');           // not a name, a duration variant of party
   for (const m of src.matchAll(/name === '([a-zA-Z]+)'/g)) names.add(m[1]);
+  for (const n of idleAnims()) names.add(n);
   return names;
 }
 
@@ -50,22 +60,33 @@ test('every animation the brain asks for exists in the renderer', () => {
 
 test('no animation is dead weight', () => {
   const emitted = emittedAnims();
-  const unreachable = [...knownAnims()].filter(n => !emitted.has(n));
+  const idle = idleAnims();
+  const unreachable = [...knownAnims()].filter(n => !emitted.has(n) && !idle.has(n));
   assert.deepEqual(unreachable, [], `animations nothing can trigger: ${unreachable.join(', ')}`);
+});
+
+test('idle fidgets stay on the renderer side of the seam', () => {
+  const idle = idleAnims();
+  assert.ok(idle.size >= 3, 'an idle pet needs more than one thing to do');
+  const emitted = emittedAnims();
+  for (const n of idle) {
+    assert.ok(!emitted.has(n), `the brain emits '${n}' — idle fidgets belong to the renderer alone`);
+  }
+  // …and the scheduler must actually be able to reach them
+  assert.match(petJs(), /startAnim\(name\)/, 'nothing plays the idle fidgets');
 });
 
 test('every animation has a duration and a body', () => {
   const src = petJs();
-  const table = src.match(/const ANIM_DUR = \{([\s\S]*?)\};/)[1];
-  const durs = [...table.matchAll(/([a-zA-Z]+):\s*(\d+)/g)];
-  for (const [, name, ms] of durs) {
-    assert.ok(+ms >= 300 && +ms <= 3000, `${name} runs ${ms}ms — too ${+ms < 300 ? 'quick to see' : 'long to sit through'}`);
+  const durs = [...durTable('ANIM_DUR'), ...durTable('IDLE_DUR')];
+  for (const [name, ms] of durs) {
+    assert.ok(ms >= 300 && ms <= 3000, `${name} runs ${ms}ms — too ${ms < 300 ? 'quick to see' : 'long to sit through'}`);
   }
   // Anything with motion must appear in computeMotion's switch, or it plays as
   // a pause of exactly its own duration.
   const motion = src.match(/switch \(anim\.name\) \{([\s\S]*?)\n  \}\n  return m;/)[1];
   const cased = new Set([...motion.matchAll(/case '([a-zA-Z]+)'/g)].map(m => m[1]));
-  for (const [, name] of durs) {
+  for (const [name] of durs) {
     if (name === 'partyBig') continue;
     assert.ok(cased.has(name), `'${name}' has a duration but no motion — the pet would freeze`);
   }

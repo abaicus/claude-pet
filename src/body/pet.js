@@ -36,6 +36,14 @@ const ANIM_DUR = {
   spin: 720, shiver: 700
 };
 
+// Idle fidgets. The renderer owns these outright — the brain has no opinion
+// about them, exactly as it has none about blinking. They are how the puppet
+// stands still. Kept out of ANIM_DUR so the seam test can still prove that
+// every BRAIN-emitted animation name exists on this side.
+const IDLE_DUR = { look: 1200, stretch: 1000, bounce: 760, wiggle: 900 };
+const IDLE_NAMES = Object.keys(IDLE_DUR);
+const durationOf = (name) => ANIM_DUR[name] || IDLE_DUR[name] || 800;
+
 function resize() {
   const dpr = window.devicePixelRatio || 1;
   canvas.width = innerWidth * dpr;
@@ -121,7 +129,27 @@ function startAnim(name, big) {
     anim = { name, start: t, dur: ANIM_DUR.spin };
     spawnConfetti(8, false);
   } else {
-    anim = { name, big, start: t, dur: ANIM_DUR[name] || 800 };
+    anim = { name, big, start: t, dur: durationOf(name) };
+  }
+}
+
+// One fidget every several seconds, and never over the top of a real reaction —
+// an idle pet should look alive, not twitchy. A grumpy one sulks: it fidgets
+// half as often and only in the two joyless ways.
+let nextIdleAt = performance.now() + 4000 + Math.random() * 5000;
+function maybeIdle(t) {
+  if (!state || state.sleeping || anim || t < nextIdleAt) return;
+  const grumpy = state.moodBand === 'grumpy';
+  nextIdleAt = t + (grumpy ? 15000 : 6500) + Math.random() * 8000;
+  const pool = grumpy ? ['look', 'wiggle'] : IDLE_NAMES;
+  const name = pool[Math.floor(Math.random() * pool.length)];
+  startAnim(name);
+  if (name === 'look') {
+    anim.dir = Math.random() < 0.5 ? -1 : 1;
+    // the eyes go where the head goes, then hold still a moment afterwards
+    glanceDir = anim.dir;
+    glanceUntil = t + IDLE_DUR.look;
+    nextGlanceAt = Math.max(nextGlanceAt, glanceUntil + 1500);
   }
 }
 
@@ -235,7 +263,7 @@ function computeMotion(t) {
       break;
     }
     case 'wake': {
-      m.squash = -0.12 * Math.sin(el * Math.PI); // stretch up
+      m.squash = -0.62 * Math.sin(el * Math.PI); // stretch up: 2 whole rows
       break;
     }
     case 'attention': {
@@ -298,6 +326,25 @@ function computeMotion(t) {
       m.tilt = (Math.floor(el * 26) % 2 ? 1 : -1) * 0.18;
       break;
     }
+    // ---- idle fidgets (renderer-owned; see IDLE_DUR)
+    case 'look': {                              // a slow look to one side
+      const d = anim.dir || 1;
+      m.tilt = Math.sin(el * Math.PI) * 0.19 * d;
+      break;
+    }
+    case 'stretch': {                           // up on tiptoes, then settle
+      m.squash = -0.62 * Math.sin(el * Math.PI);
+      m.hop = Math.sin(el * Math.PI) * 4;
+      break;
+    }
+    case 'bounce': {                            // two little hops, because why not
+      m.hop = Math.abs(Math.sin(el * Math.PI * 2)) * 8;
+      break;
+    }
+    case 'wiggle': {                            // a shimmy, one art pixel each way
+      m.tilt = Math.sin(el * Math.PI * 4) * 0.12;
+      break;
+    }
     case 'hearts': break;
     case 'sleep': break;
   }
@@ -338,6 +385,7 @@ function frame(t) {
 
   if (cursor.walking && cursor.facing) facing = cursor.facing;
 
+  maybeIdle(t);
   const motion = computeMotion(t);
 
   // sleeping Zzz

@@ -16,12 +16,13 @@ function tmpTranscript(lines) {
   return file;
 }
 
-function assistantEntry({ input = 0, cacheRead = 0, cacheCreate = 0, output = 0, sidechain = false, ts = T0 }) {
+function assistantEntry({ input = 0, cacheRead = 0, cacheCreate = 0, output = 0, sidechain = false, ts = T0, model }) {
   return {
     type: 'assistant',
     isSidechain: sidechain,
     timestamp: new Date(ts).toISOString(),
     message: {
+      model,
       usage: {
         input_tokens: input,
         cache_read_input_tokens: cacheRead,
@@ -29,6 +30,15 @@ function assistantEntry({ input = 0, cacheRead = 0, cacheCreate = 0, output = 0,
         output_tokens: output
       }
     }
+  };
+}
+
+// What Claude Code itself writes when a session is compacted — its own counts.
+function boundary({ trigger = 'manual', pre = 0, post = 0, ts = T0 }) {
+  return {
+    type: 'system', subtype: 'compact_boundary',
+    timestamp: new Date(ts).toISOString(),
+    compactMetadata: { trigger, preTokens: pre, postTokens: post }
   };
 }
 
@@ -163,5 +173,77 @@ test('unreadable transcript reports nothing (never lies)', () => {
   const { fx, outputTokensDelta } = reg.poll(T0);
   assert.equal(outputTokensDelta, 0);
   assert.equal(fx.filter(f => f.kind === 'ctx-warning').length, 0);
-  assert.equal(reg.summary(T0).worstPct, 0);
+  // null, not 0: a context we could not read is unknown, and "unknown" and
+  // "empty" are very different claims to put on screen.
+  assert.equal(reg.summary(T0).worstPct, null);
+  assert.equal(reg.summary(T0).sessions[0].pct, null);
+});
+
+test('the window comes from the model, not from one hardcoded number', () => {
+  const tp = tmpTranscript([assistantEntry({ input: 300_000, model: 'claude-opus-5', ts: T0 })]);
+  const reg = new SessionRegistry({});
+  startSession(reg, 's1', tp, 'big');
+  reg.poll(T0);
+  // 300k against the old flat 200k assumption read as 150% — nonsense the pet
+  // would happily have announced.
+  assert.equal(Math.round(reg.summary(T0).worstPct * 100), 30);
+});
+
+test('a reading bigger than the assumed window raises the window, never passes 100%', () => {
+  const tp = tmpTranscript([assistantEntry({ input: 480_000, model: 'some-future-model', ts: T0 })]);
+  const reg = new SessionRegistry({});
+  startSession(reg, 's1', tp, 'unknown-model');
+  reg.poll(T0);
+  assert.equal(reg.summary(T0).worstPct, 1, 'a full context is 100%, not 240%');
+});
+
+test('a compaction is read from Claude Code\'s own boundary entry', () => {
+  const tp = tmpTranscript([
+    assistantEntry({ input: 150_000, model: 'claude-opus-5', ts: T0 }),
+    boundary({ trigger: 'manual', pre: 152_000, post: 14_000, ts: T0 + 1000 })
+  ]);
+  const reg = new SessionRegistry({});
+  startSession(reg, 's1', tp, 'app');
+  reg.poll(T0 + 2000);
+  const s = reg.sessions.get('s1');
+  assert.equal(s.ctxTokens, 14_000, 'postTokens is the context now — no waiting for the next turn');
+});
+
+test('an auto compaction measures the real ceiling and becomes the denominator', () => {
+  const ceilings = {};
+  const tp = tmpTranscript([
+    assistantEntry({ input: 400_000, model: 'claude-opus-5', ts: T0 }),
+    boundary({ trigger: 'auto', pre: 402_000, post: 12_000, ts: T0 + 1000 }),
+    assistantEntry({ input: 201_000, model: 'claude-opus-5', ts: T0 + 2000 })
+  ]);
+  const reg = new SessionRegistry({ ctxCeilings: ceilings });
+  startSession(reg, 's1', tp, 'app');
+  reg.poll(T0 + 3000);
+  assert.equal(ceilings['claude-opus-5'], 402_000, 'measured, and persisted for next time');
+  // 201k of a measured 402k ceiling — half, not the 20% the table would guess
+  assert.equal(Math.round(reg.summary(T0 + 3000).worstPct * 100), 50);
+});
+
+test('a restart reads the context back out of the transcript instead of claiming 0%', () => {
+  const tp = tmpTranscript([
+    assistantEntry({ input: 90_000, output: 400, model: 'claude-opus-5', ts: T0 }),
+    assistantEntry({ input: 120_000, output: 700, model: 'claude-opus-5', ts: T0 + 1000 })
+  ]);
+  // "restart": the byte cursor survived at EOF, the reading did not
+  const offsets = { [tp]: fs.statSync(tp).size };
+  const reg = new SessionRegistry({ transcriptOffsets: offsets });
+  startSession(reg, 's1', tp, 'app');
+  const { outputTokensDelta } = reg.poll(T0 + 2000);
+  assert.equal(reg.sessions.get('s1').ctxTokens, 120_000, 'the newest turn, read from the tail');
+  assert.equal(outputTokensDelta, 0, 'seeding must never re-bank tokens already spent');
+});
+
+test('two sessions on one transcript both get the reading', () => {
+  const tp = tmpTranscript([assistantEntry({ input: 88_000, model: 'claude-opus-5', ts: T0 })]);
+  const reg = new SessionRegistry({});
+  startSession(reg, 'a', tp, 'app');
+  startSession(reg, 'b', tp, 'app');
+  reg.poll(T0);
+  assert.equal(reg.sessions.get('a').ctxTokens, 88_000);
+  assert.equal(reg.sessions.get('b').ctxTokens, 88_000, 'a byte cursor is spent once — share the result');
 });

@@ -4,6 +4,7 @@ const assert = require('node:assert');
 const { reduce, tick, checkTokenMilestone } = require('../src/brain/reducer');
 const { defaultState } = require('../src/brain/state');
 const { TUNING, XP_LADDER } = require('../src/shared/constants');
+const { POOLS } = require('../src/brain/quips');
 
 const T0 = 1_700_000_000_000;
 function ctx(now = T0, live = true, rng = () => 0.99) { return { now, rng, live }; }
@@ -357,4 +358,15 @@ test('nothing fires during a replay, however detailed the event', () => {
   ];
   for (const e of events) assert.deepEqual(reduce(s, e, ctx(T0, false)), []);
   assert.ok(s.xp > 0, 'stats still moved');
+});
+
+test('a prompt sometimes gets cheered on its way out the door', () => {
+  const s = fresh();
+  s.food = 50;                                   // neither starving nor stuffed
+  // rng below cheerChance on the branch roll, then 0 to pick from the pool
+  const fx = reduce(s, ev('UserPromptSubmit', { plen: 200 }), ctx(T0, true, () => 0.01));
+  const bubble = fx.find(f => f.type === 'bubble');
+  assert.equal(bubble.kind, 'cheer');
+  assert.ok(POOLS.cheer.includes(bubble.text), bubble.text);
+  assert.ok(POOLS.cheer.includes('make no mistakes!'), 'the one quip that was asked for by name');
 });

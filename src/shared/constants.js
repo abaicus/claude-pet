@@ -121,7 +121,9 @@ const TUNING = {
   gossipEveryMs: 2.5 * 60 * 1000,
   gossipChance: 0.35,
   gossipRecentMs: 10 * 60 * 1000, // only while events are recent
-  ctxWindow: 200_000,             // assumed window; readouts are labeled ~
+  cheerChance: 0.22,          // …a prompt gets cheered on instead of eaten
+  jokeChance: 0.3,            // …idle chatter is a joke instead of a fact
+  ctxWindow: 200_000,             // fallback window for an unknown model
   ctxWarn1: 0.75,
   ctxWarn2: 0.90,
   ctxRearmBelow: 0.60,
@@ -131,6 +133,24 @@ const TUNING = {
   sessionDeadAfterMs: 30 * 60 * 1000,
   maxNameLen: 12
 };
+
+// ---------------------------------------------------------------- context
+// The transcript states how many tokens a turn used but never how many the
+// model can hold, so the window has to come from somewhere. This table is a
+// best-known default and nothing more: sessions.js prefers a ceiling actually
+// measured at an auto-compaction, and raises the number here the moment it
+// reads a context bigger than it — an assumed 200k is how the pet ended up
+// announcing "ctx ~180%" on a session that was barely a third full.
+const CTX_WINDOWS = [
+  [/^claude-(opus|sonnet|fable)-5/, 1_000_000],
+  [/^claude-haiku-4-5/, 200_000]
+];
+function contextWindowFor(model) {
+  if (typeof model === 'string') {
+    for (const [re, size] of CTX_WINDOWS) if (re.test(model)) return size;
+  }
+  return TUNING.ctxWindow;
+}
 
 // ---------------------------------------------------------------- IPC
 const IPC = {
@@ -145,5 +165,6 @@ const IPC = {
 module.exports = {
   petDir, claudeSettingsPath, FILES,
   XP_LADDER, MAX_LEVEL, FORMS, formForLevel, levelForXp,
-  PALETTES, PALETTE_NAMES, ACCESSORIES, TUNING, IPC
+  PALETTES, PALETTE_NAMES, ACCESSORIES, TUNING, IPC,
+  CTX_WINDOWS, contextWindowFor
 };

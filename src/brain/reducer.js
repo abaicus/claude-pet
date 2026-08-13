@@ -444,7 +444,13 @@ function reduce(state, ev, ctx) {
       else if (state.food < 10 + TUNING.foodPerPrompt) { sound(fx, ctx, 'growl'); say(fx, ctx, 0.6, 'promptStarving'); }
       else if (big) { sound(fx, ctx, 'feast'); say(fx, ctx, 0.5, 'promptLong'); }
       else if (plen > 0 && plen <= TUNING.shortPromptLen) { sound(fx, ctx, 'prompt'); say(fx, ctx, 0.4, 'promptShort'); }
-      else { sound(fx, ctx, 'prompt'); say(fx, ctx, 0.25, 'prompt'); }
+      else {
+        sound(fx, ctx, 'prompt');
+        // The work is going out the door — sometimes the pet shouts after it
+        // instead of commenting on the meal.
+        if (ctx.rng() < TUNING.cheerChance) say(fx, ctx, 1, 'cheer');
+        else say(fx, ctx, 0.25, 'prompt');
+      }
       break;
     }
     case 'PreToolUse': {

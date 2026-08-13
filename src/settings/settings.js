@@ -189,7 +189,10 @@ for (const [name, label] of DEBUG_EVENTS) {
 // ------------------------------------------------------------------ debug: every animation reachable
 const DEBUG_ANIMS = [
   'eat', 'nibble', 'feast', 'party', 'party-big', 'sulk', 'sleep', 'wake',
-  'attention', 'flinch', 'shiver', 'hearts', 'wave', 'sniff', 'think', 'nod', 'spin'
+  'attention', 'flinch', 'shiver', 'hearts', 'wave', 'sniff', 'think', 'nod', 'spin',
+  // idle fidgets: the renderer plays these by itself, but they still have to
+  // be auditionable or nobody would ever see one on purpose
+  'look', 'stretch', 'bounce', 'wiggle'
 ];
 for (const a of DEBUG_ANIMS) {
   const b = document.createElement('button');

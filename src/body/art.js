@@ -215,7 +215,12 @@
     const col = (i) => side * (inner + i);
     const midY = eyeY + Math.floor(h / 2);
 
-    if (opts.sleeping || opts.mood === 'happy') {  // closed arc: ^ ^
+    // The happy ^ ^ arc IS what a blink looks like, so it cannot also be the
+    // resting face: a pet that is delighted most of the day would then never
+    // blink and its eyes could never follow the cursor. Open eyes at rest,
+    // arc on the blink — a grumpy pet squeezes flat instead of smiling.
+    const smiley = opts.mood !== 'grumpy' && opts.mood !== 'sad';
+    if (opts.sleeping || (opts.blink > 0.5 && smiley)) {
       for (let i = 0; i < w; i++) {
         const lift = (i === 0 || i === w - 1) ? 0 : 1;
         px(ctx, col(i), midY + lift, INK);
@@ -238,6 +243,9 @@
     // a bright pixel low-inside and a dim one high-outside: wet, cute eyes
     px(ctx, col(0), eyeY + 1, '#fffdf5');
     px(ctx, col(w - 1), eyeY + h - 2 - droop, shade(ramp[1], 0.3));
+    // a second glint is what separates delighted from merely awake, now that
+    // both moods have open eyes
+    if (opts.mood === 'happy') px(ctx, col(w - 2), eyeY + h - 2, '#fffdf5');
   }
 
   function drawMouth(ctx, F, opts, ramp, eyeY) {
@@ -259,6 +267,9 @@
       return;
     }
     px(ctx, -1, y + 1, INK); px(ctx, 0, y, INK); px(ctx, 1, y + 1, INK); // ∪
+    // A wider ∪ — properly pleased. It grows sideways along the arms of the
+    // smile, never upward: one row higher and it runs into the eyes.
+    if (opts.mood === 'happy') { px(ctx, -2, y + 1, INK); px(ctx, 2, y + 1, INK); }
   }
 
   function drawFace(ctx, F, hw, opts, ramp) {
@@ -417,21 +428,30 @@
     // half a pixel stops being a pixel sprite. Tilt leans instead of rotating
     // for the same reason.
     const lean = Math.round((opts.tilt || 0) * 10);
-    const breathe = opts.sleeping ? Math.round(Math.sin(t / 1100) * 0.7) : 0;
+    // Breathing, always — an idle pet that holds perfectly still reads as a
+    // frozen screenshot. Awake it is slower and shallower than asleep, and it
+    // rounds to a whole art pixel, so it shows as one unhurried rise and fall.
+    const breathe = opts.sleeping
+      ? Math.round(Math.sin(t / 1100) * 0.7)
+      : Math.round(Math.sin(t / 2300) * 0.62);
     const rise = Math.round(hop / PX);
     ctx.translate(lean * PX, -(rise + breathe) * PX);
 
     const hw = halfWidths(F);
     const mask = buildMask(F, hw);
+    // Negative squash is a STRETCH. It used to fall through to `mask`, which
+    // is why waking up and stretching were animations that played as pauses.
     const squashRows = Math.round((opts.squash || 0) * 3);
-    const drawn = squashRows > 0 ? squashMask(mask, squashRows) : mask;
+    const drawn = squashRows > 0 ? squashMask(mask, squashRows)
+      : squashRows < 0 ? stretchMask(mask, -squashRows)
+        : mask;
 
     if (opts.glow) drawRim(ctx, drawn);
     if (BEHIND.has(opts.accessory)) drawAccessory(ctx, opts.accessory, F, hw, ramp, t);
     drawMask(ctx, F, drawn, ramp, isEgg);
 
     ctx.save();
-    if (squashRows > 0) ctx.translate(0, squashRows * PX); // the face rides the squash
+    if (squashRows !== 0) ctx.translate(0, squashRows * PX); // the face rides the squash — and the stretch
     drawFace(ctx, F, hw, opts, ramp);
     if (opts.accessory && !BEHIND.has(opts.accessory)) {
       drawAccessory(ctx, opts.accessory, F, hw, ramp, t);
@@ -450,6 +470,20 @@
       if (y > maxY - rows) continue;
       out.add(key(x, y));
       if (y <= 1) { out.add(key(x - 1, y)); out.add(key(x + 1, y)); }
+    }
+    return out;
+  }
+
+  // Stretch: the mirror of squash. The feet stay planted and everything above
+  // lifts, with the seam row repeated to fill the gap — a taller, thinner
+  // creature rather than one that has quietly levitated.
+  function stretchMask(mask, rows) {
+    const out = new Set();
+    for (const cell of mask) {
+      const [x, y] = cell.split(',').map(Number);
+      if (y <= 1) { out.add(key(x, y)); continue; }
+      out.add(key(x, y + rows));
+      if (y === 2) for (let r = 0; r < rows; r++) out.add(key(x, y + r));
     }
     return out;
   }

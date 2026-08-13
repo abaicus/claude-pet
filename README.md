@@ -48,9 +48,13 @@ the hook script is fire-and-forget and can never block or fail a session.
 Every sprite is pixel art drawn on an integer grid at runtime — no image
 files. The silhouette's per-row half-width table places the face, ears and
 every accessory, so nothing floats off the body; the palette hues the whole
-creature. The pet levels 0–10 through five forms (egg → hatchling → junior →
-senior → elder) on xp from commits, green tests, PRs, deploys and edits.
-Context warnings fire once at ~75% and ~90% per session and re-arm below 60%.
+creature. It is never quite still: it breathes, blinks, glances around, and
+fidgets every few seconds (a look, a stretch, a bounce, a shimmy) — all of
+that is the renderer's own business, the same as blinking, and the brain has
+no opinion about it. The pet levels 0–10 through five forms (egg → hatchling
+→ junior → senior → elder) on xp from commits, green tests, PRs, deploys and
+edits. Context warnings fire once at ~75% and ~90% per session and re-arm
+below 60%.
 
 ## What it notices
 
@@ -74,6 +78,24 @@ The hook payloads carry far more than "a tool ran", so the pet reads them:
   only the change.
 - **Session shape**: resume vs clear vs startup, manual vs auto compaction,
   and a permission prompt vs Claude idly waiting on you (different chimes).
+
+### Where the context number comes from
+
+The numerator is read, never guessed: the newest main-chain assistant turn in
+the transcript carries `input + cache_read + cache_creation`, and when a
+session is compacted Claude Code writes its own before/after counts into a
+`compact_boundary` entry, so the readout drops the moment the context does.
+Subagent turns are excluded — they make it bounce.
+
+The denominator is the one thing the transcript never states, so it comes from
+three sources, best first: a ceiling **measured** at an auto-compaction (it
+fired *at* the limit, so that number is the limit, and it is persisted); a
+per-model table; or, if a reading comes in bigger than the table allows, the
+reading itself. That last rule exists because a flat 200k assumption once had
+the pet cheerfully announcing `ctx ~180%`.
+
+A context it has not read is *absent*, not `0%` — the stats line simply leaves
+it out until there is something real to say.
 
 It never lies: estimates are labeled `~` (an edit's own line counts are not a
 git diff, so they carry one; git's numbers don't), and data it can't read is

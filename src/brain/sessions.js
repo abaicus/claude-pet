@@ -1,26 +1,45 @@
 'use strict';
 // Session registry + incremental transcript reading (app-side ONLY — hooks
-// never read transcripts). Tracks per-session context fullness against an
-// assumed 200k window (always labeled ~), a rolling 5h output-token burn
-// figure, and one-shot ctx warnings. Excludes subagent/sidechain usage from
-// ctx — it makes the readout bounce. No timers, no Electron: the brain
-// calls poll(now).
+// never read transcripts). Tracks per-session context fullness, a rolling 5h
+// output-token burn figure, and one-shot ctx warnings. Excludes
+// subagent/sidechain usage from ctx — it makes the readout bounce. No timers,
+// no Electron: the brain calls poll(now).
+//
+// The numerator is READ, never guessed: the newest main-chain assistant turn
+// carries input + cache_read + cache_creation, and Claude Code writes its own
+// counts into a `compact_boundary` entry when a session is compacted.
+//
+// The denominator is the one thing the transcript does not state — the model's
+// context window — so it comes from three sources, best first:
+//   1. an `auto` compact_boundary: it fired AT the ceiling, so its preTokens
+//      is a measurement of the real limit for that model. Persisted.
+//   2. the per-model table in constants.js.
+//   3. the largest reading seen, when it exceeds (2) — proof the table is out
+//      of date. A pet reporting "ctx ~180%" is a pet nobody believes.
+//
+// A context we have not read is null, not zero, and prints as nothing at all.
 
 const fs = require('fs');
-const { TUNING } = require('../shared/constants');
+const { TUNING, contextWindowFor } = require('../shared/constants');
 
 const MAX_READ_PER_POLL = 8 * 1024 * 1024;
+const SEED_TAIL_BYTES = 1024 * 1024;
 
 class SessionRegistry {
   /**
    * @param {object} opts
    * @param {object} opts.transcriptOffsets  persisted {path: byteOffset} —
    *   survives restarts AND resets, else tokens would refeed.
+   * @param {object} opts.ctxCeilings  persisted {model: tokens} measured at
+   *   auto-compactions; rare events, so losing them on restart wastes them.
    */
-  constructor({ transcriptOffsets = {} } = {}) {
+  constructor({ transcriptOffsets = {}, ctxCeilings = {} } = {}) {
     this.sessions = new Map();          // sid → session
     this.offsets = transcriptOffsets;   // transcript path → byte offset (persisted)
+    this.ceilings = ctxCeilings;        // model → measured window (persisted)
+    this.observed = {};                 // model → biggest ctx seen this run
     this.partials = new Map();          // transcript path → partial line buffer
+    this.seeded = new Set();            // transcript paths already tail-seeded
     this.burn = [];                     // [{ts, tokens}] pruned to 5h
     this.lastReportAt = 0;
   }
@@ -30,7 +49,10 @@ class SessionRegistry {
     if (!s) {
       s = {
         sid, project: null, transcript: null, live: true,
-        ctxTokens: 0, lastActivityAt: 0, warned75: false, warned90: false
+        ctxTokens: null,                // null = never read one. Not zero.
+        ctxAt: 0,                       // timestamp of the reading above
+        model: null,
+        lastActivityAt: 0, warned75: false, warned90: false
       };
       this.sessions.set(sid, s);
     }
@@ -56,32 +78,43 @@ class SessionRegistry {
     const fx = [];
     let outputTokensDelta = 0;
 
+    // One read per transcript FILE, applied to every session using it. Two
+    // live sids can share a file, and a byte cursor can only be spent once —
+    // whichever session read first would otherwise starve the other.
+    const byPath = new Map();
     for (const s of this.sessions.values()) {
       // liveness decay: silence for 30 min → treat as gone
       if (s.live && now - s.lastActivityAt > TUNING.sessionDeadAfterMs) s.live = false;
       if (!s.live || !s.transcript) continue;
+      if (!byPath.has(s.transcript)) byPath.set(s.transcript, []);
+      byPath.get(s.transcript).push(s);
+    }
+    for (const [file, group] of byPath) {
+      outputTokensDelta += this.readTranscript(file, group, now);
+    }
 
-      const res = this.readTranscript(s, now);
-      outputTokensDelta += res.outputTokens;
-
-      const pct = this.ctxFraction(s);
-      // one-shot warnings, re-armed only below 60%
-      if (pct < TUNING.ctxRearmBelow) { s.warned75 = false; s.warned90 = false; }
-      if (pct >= TUNING.ctxWarn2 && !s.warned90) {
-        s.warned90 = true; s.warned75 = true;
-        fx.push({ type: 'anim', name: 'attention' });
-        fx.push({ type: 'sound', name: 'warn', important: true });
-        fx.push({
-          type: 'bubble', important: true, kind: 'ctx-warning',
-          text: `${this.label(s)} ctx ~${Math.round(pct * 100)}% — /compact now!!`
-        });
-      } else if (pct >= TUNING.ctxWarn1 && !s.warned75) {
-        s.warned75 = true;
-        fx.push({ type: 'sound', name: 'hint', important: true });
-        fx.push({
-          type: 'bubble', important: true, kind: 'ctx-warning',
-          text: `${this.label(s)} ctx ~${Math.round(pct * 100)}% — /compact soon!`
-        });
+    for (const group of byPath.values()) {
+      for (const s of group) {
+        const pct = this.ctxFraction(s);
+        if (pct === null) continue;       // unknown is not zero — warn about nothing
+        // one-shot warnings, re-armed only below 60%
+        if (pct < TUNING.ctxRearmBelow) { s.warned75 = false; s.warned90 = false; }
+        if (pct >= TUNING.ctxWarn2 && !s.warned90) {
+          s.warned90 = true; s.warned75 = true;
+          fx.push({ type: 'anim', name: 'attention' });
+          fx.push({ type: 'sound', name: 'warn', important: true });
+          fx.push({
+            type: 'bubble', important: true, kind: 'ctx-warning',
+            text: `${this.label(s)} ctx ~${Math.round(pct * 100)}% — /compact now!!`
+          });
+        } else if (pct >= TUNING.ctxWarn1 && !s.warned75) {
+          s.warned75 = true;
+          fx.push({ type: 'sound', name: 'hint', important: true });
+          fx.push({
+            type: 'bubble', important: true, kind: 'ctx-warning',
+            text: `${this.label(s)} ctx ~${Math.round(pct * 100)}% — /compact soon!`
+          });
+        }
       }
     }
 
@@ -104,57 +137,145 @@ class SessionRegistry {
     return { fx, outputTokensDelta };
   }
 
-  readTranscript(s, now) {
+  /** @returns {number} output tokens read (for the lifetime counter) */
+  readTranscript(file, group, now) {
     let outputTokens = 0;
     let st;
-    try { st = fs.statSync(s.transcript); } catch (_) { return { outputTokens }; }
-    let offset = this.offsets[s.transcript] || 0;
-    if (st.size < offset) { offset = 0; this.partials.delete(s.transcript); } // rotated
-    if (st.size === offset) return { outputTokens };
+    try { st = fs.statSync(file); } catch (_) { return outputTokens; }
+    let offset = this.offsets[file] || 0;
+    if (st.size < offset) { offset = 0; this.partials.delete(file); } // rotated
+
+    // If this poll's read can't reach the newest bytes, take the reading from
+    // the tail first. Two cases: a restart (the cursor survived, the reading
+    // did not) and a first run against a transcript larger than one poll.
+    const behind = st.size - offset;
+    if (behind > MAX_READ_PER_POLL || (offset > 0 && behind <= 0)) {
+      this.seedFromTail(file, group, now, st.size);
+    }
+    if (st.size === offset) return outputTokens;
 
     let fd;
-    try { fd = fs.openSync(s.transcript, 'r'); } catch (_) { return { outputTokens }; }
+    try { fd = fs.openSync(file, 'r'); } catch (_) { return outputTokens; }
     try {
       const len = Math.min(st.size - offset, MAX_READ_PER_POLL);
       const buf = Buffer.alloc(len);
       const read = fs.readSync(fd, buf, 0, len, offset);
       offset += read;
-      this.offsets[s.transcript] = offset;
+      this.offsets[file] = offset;
 
-      const text = (this.partials.get(s.transcript) || '') + buf.toString('utf8', 0, read);
+      const text = (this.partials.get(file) || '') + buf.toString('utf8', 0, read);
       const lines = text.split('\n');
-      this.partials.set(s.transcript, lines.pop());
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        let entry;
-        try { entry = JSON.parse(line); } catch (_) { continue; }
-        const usage = entry && entry.message && entry.message.usage;
-        if (!usage) continue;
-        const ts = entry.timestamp ? Date.parse(entry.timestamp) || now : now;
-
-        const out = usage.output_tokens || 0;
-        if (out > 0) {
-          outputTokens += out;                    // burn counts everything — it is real spend
-          this.burn.push({ ts, tokens: out });
-        }
-        if (entry.isSidechain) continue;          // ctx: main chain only
-        if (entry.type !== 'assistant') continue;
-        const ctx = (usage.input_tokens || 0)
-          + (usage.cache_read_input_tokens || 0)
-          + (usage.cache_creation_input_tokens || 0);
-        if (ctx > 0) {
-          s.ctxTokens = ctx;                      // latest main-chain turn = current fullness
-          s.lastActivityAt = Math.max(s.lastActivityAt, ts);
-        }
-      }
+      this.partials.set(file, lines.pop());
+      for (const line of lines) outputTokens += this.applyLine(line, group, now, true);
     } catch (_) { /* transcript unreadable → just report nothing (never lie) */ }
     finally { try { fs.closeSync(fd); } catch (_) {} }
-    return { outputTokens };
+    return outputTokens;
+  }
+
+  /**
+   * Take the newest ctx reading straight from the end of the file, so the pet
+   * knows the number NOW instead of after Claude's next turn (a restarted app
+   * claiming "ctx ~0%") or after several polls of catch-up (a cold start on a
+   * 15MB transcript reporting a number from the middle of the morning).
+   * Output tokens are deliberately NOT counted here — the catch-up read will
+   * walk these same bytes and bank them exactly once. The setCtx timestamp
+   * guard is what lets those older entries pass without clobbering this.
+   */
+  seedFromTail(file, group, now, end) {
+    if (this.seeded.has(file)) return;
+    this.seeded.add(file);
+    let fd;
+    try { fd = fs.openSync(file, 'r'); } catch (_) { return; }
+    try {
+      const start = Math.max(0, end - SEED_TAIL_BYTES);
+      const len = end - start;
+      if (len <= 0) return;
+      const buf = Buffer.alloc(len);
+      const read = fs.readSync(fd, buf, 0, len, start);
+      const lines = buf.toString('utf8', 0, read).split('\n');
+      if (start > 0) lines.shift();  // the first line is half a line
+      for (const line of lines) this.applyLine(line, group, now, false);
+    } catch (_) { /* unreadable tail → report nothing */ }
+    finally { try { fs.closeSync(fd); } catch (_) {} }
+  }
+
+  /** @returns {number} output tokens this line contributed to burn */
+  applyLine(line, group, now, countBurn) {
+    if (!line || !line.trim()) return 0;
+    let entry;
+    try { entry = JSON.parse(line); } catch (_) { return 0; }
+    if (!entry || typeof entry !== 'object') return 0;
+    const ts = entry.timestamp ? Date.parse(entry.timestamp) || now : now;
+
+    // A compaction: Claude Code writes its OWN before/after token counts here,
+    // so the pet can drop the readout the instant the context is folded down
+    // instead of waiting for the next turn to imply it.
+    if (entry.type === 'system' && entry.subtype === 'compact_boundary') {
+      const m = entry.compactMetadata || {};
+      if (typeof m.postTokens === 'number') this.setCtx(group, m.postTokens, ts);
+      // An AUTO compaction fires because the window filled, so preTokens is a
+      // direct measurement of the ceiling — the only non-assumed denominator
+      // this app can obtain.
+      if (m.trigger === 'auto' && typeof m.preTokens === 'number' && m.preTokens > 0) {
+        for (const s of group) {
+          if (!s.model) continue;
+          this.ceilings[s.model] = Math.max(this.ceilings[s.model] || 0, m.preTokens);
+        }
+      }
+      return 0;
+    }
+
+    const usage = entry.message && entry.message.usage;
+    if (!usage) return 0;
+
+    let counted = 0;
+    const out = usage.output_tokens || 0;
+    if (out > 0 && countBurn) {
+      counted = out;                            // burn counts everything — it is real spend
+      this.burn.push({ ts, tokens: out });
+    }
+    if (entry.isSidechain) return counted;      // ctx: main chain only
+    if (entry.type !== 'assistant') return counted;
+
+    const model = entry.message.model;
+    if (typeof model === 'string' && model && !model.startsWith('<')) {
+      for (const s of group) s.model = model;   // models change mid-session
+    }
+    const ctx = (usage.input_tokens || 0)
+      + (usage.cache_read_input_tokens || 0)
+      + (usage.cache_creation_input_tokens || 0);
+    if (ctx > 0) this.setCtx(group, ctx, ts);
+    return counted;
+  }
+
+  // Only ever moves forward in transcript time: a tail seed reads the newest
+  // entries first and the catch-up read then walks older ones.
+  setCtx(group, tokens, ts) {
+    for (const s of group) {
+      if (ts < s.ctxAt) continue;
+      s.ctxTokens = tokens;
+      s.ctxAt = ts;
+      s.lastActivityAt = Math.max(s.lastActivityAt, ts);
+      const key = s.model || '';
+      this.observed[key] = Math.max(this.observed[key] || 0, tokens);
+    }
   }
 
   // ------------------------------------------------------------- queries
-  ctxFraction(s) { return s.ctxTokens / TUNING.ctxWindow; }
+  /** The denominator, best source first. See the header. */
+  ctxWindow(s) {
+    const model = s.model || '';
+    const measured = this.ceilings[model];
+    if (measured > 0) return measured;
+    return Math.max(contextWindowFor(s.model), this.observed[model] || 0);
+  }
+
+  /** @returns {number|null} null when no reading exists — say nothing, not 0. */
+  ctxFraction(s) {
+    if (s.ctxTokens == null) return null;
+    return s.ctxTokens / this.ctxWindow(s);
+  }
+
   label(s) { return s.project || (s.sid || '').slice(0, 8); }
 
   liveSessions() {
@@ -165,6 +286,7 @@ class SessionRegistry {
     let worst = null;
     for (const s of this.liveSessions()) {
       const pct = this.ctxFraction(s);
+      if (pct === null) continue;
       if (!worst || pct > worst.pct) worst = { session: s, pct };
     }
     return worst;
@@ -208,11 +330,13 @@ class SessionRegistry {
   summary(now) {
     const live = this.liveSessions()
       .map(s => ({ sid: s.sid, project: this.label(s), pct: this.ctxFraction(s) }))
-      .sort((a, b) => b.pct - a.pct);
+      // unknown context sorts last: it is the absence of a reading, not a low one
+      .sort((a, b) => (b.pct === null ? -1 : b.pct) - (a.pct === null ? -1 : a.pct));
+    const known = live.filter(x => x.pct !== null);
     return {
       count: live.length,
       sessions: live,
-      worstPct: live.length ? live[0].pct : 0,
+      worstPct: known.length ? known[0].pct : null,
       burn: this.burnLabel(now)
     };
   }

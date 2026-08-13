@@ -40,8 +40,12 @@ class Brain extends EventEmitter {
     this.cursor = loadJson(this.files.cursor, { events: 0, transcripts: {} });
     if (typeof this.cursor.events !== 'number') this.cursor.events = 0;
     if (!this.cursor.transcripts || typeof this.cursor.transcripts !== 'object') this.cursor.transcripts = {};
+    if (!this.cursor.ctxCeilings || typeof this.cursor.ctxCeilings !== 'object') this.cursor.ctxCeilings = {};
 
-    this.sessions = new SessionRegistry({ transcriptOffsets: this.cursor.transcripts });
+    this.sessions = new SessionRegistry({
+      transcriptOffsets: this.cursor.transcripts,
+      ctxCeilings: this.cursor.ctxCeilings   // measured at auto-compactions; too rare to relearn
+    });
 
     this.stateSaver = new Saver(this.files.state, () => this.state);
     this.prefsSaver = new Saver(this.files.prefs, () => this.prefs, 1000);
@@ -206,6 +210,13 @@ class Brain extends EventEmitter {
     if (this.rng() > TUNING.gossipChance) return;
     if (!this.state.lastEventAt || now - this.state.lastEventAt > TUNING.gossipRecentMs) return;
     if (this.state.sleeping) return;
+    // Some of the time it drops the telemetry and just says something about
+    // being a language model. Clearly a joke, so it can't be mistaken for one
+    // of the real numbers.
+    if (this.rng() < TUNING.jokeChance) {
+      this.pushBubble({ text: pick(this.rng, 'aiJoke'), kind: 'joke' });
+      return;
+    }
     const fact = this.pickFact(now, /*forGossip*/ true);
     if (fact) this.pushBubble({ text: fact, kind: 'gossip' });
   }
@@ -216,7 +227,7 @@ class Brain extends EventEmitter {
     const sum = this.sessions.summary(now);
     if (sum.count > 0) {
       const worst = sum.sessions[0];
-      facts.push(`${worst.project} ctx ~${Math.round(worst.pct * 100)}%`);
+      if (worst.pct !== null) facts.push(`${worst.project} ctx ~${Math.round(worst.pct * 100)}%`);
       facts.push(`${sum.count} session${sum.count === 1 ? '' : 's'} live rn`);
     }
     const todo = this.freshTodos(now);
@@ -257,6 +268,9 @@ class Brain extends EventEmitter {
         if (this.rng() < TUNING.petFactChance) {
           this.pushBubble({ text: this.pickFact(now), kind: 'fact' });
           this.applyFx([{ type: 'sound', name: 'ding' }]);
+        } else if (this.rng() < TUNING.jokeChance) {
+          this.pushBubble({ text: pick(this.rng, 'aiJoke'), kind: 'joke' });
+          this.applyFx([{ type: 'sound', name: 'pet' }]);
         } else {
           this.pushBubble({ text: pick(this.rng, 'petted'), kind: 'petted' });
           this.applyFx([{ type: 'sound', name: 'pet' }]);
@@ -503,11 +517,15 @@ class Brain extends EventEmitter {
     const sum = this.sessions.summary(now);
     if (sum.count === 0) return { mode: 'idle', text: idPart + todoPart, strip: [] };
 
-    let text = `${idPart} │ ${sum.count} session${sum.count === 1 ? '' : 's'} │ ctx ~${Math.round(sum.worstPct * 100)}% │ ${sum.burn}/5h`;
+    // A context we have not read is left out entirely — printing ~0% for
+    // "don't know yet" is the kind of small lie that makes the whole readout
+    // untrustworthy.
+    const ctxPart = sum.worstPct === null ? '' : ` │ ctx ~${Math.round(sum.worstPct * 100)}%`;
+    let text = `${idPart} │ ${sum.count} session${sum.count === 1 ? '' : 's'}${ctxPart} │ ${sum.burn}/5h`;
     if (s.greenStreak > 0) text += ` │ ✓×${s.greenStreak}`;
     text += todoPart;
     const strip = sum.count > 1
-      ? sum.sessions.slice(0, 3).map(x => `${x.project} ~${Math.round(x.pct * 100)}%`)
+      ? sum.sessions.slice(0, 3).map(x => x.pct === null ? x.project : `${x.project} ~${Math.round(x.pct * 100)}%`)
       : [];
     if (sum.count > 3) strip.push(`+${sum.count - 3}`);
     return { mode: 'active', text, strip };
