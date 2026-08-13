@@ -254,7 +254,7 @@ class Brain extends EventEmitter {
         } else {
           this.pushBubble({ text: pick(this.rng, 'petted'), kind: 'petted' });
         }
-        this.applyFx([{ type: 'sound', name: 'pop' }]);
+        this.applyFx([{ type: 'sound', name: 'pet' }]);
         break;
       }
       case 'treat': {
@@ -268,7 +268,7 @@ class Brain extends EventEmitter {
         addClamped(this.state, 'mood', TUNING.treat.mood);
         this.state.xp += TUNING.treat.xp;
         this.recheckLevel(ctx);
-        this.applyFx([{ type: 'anim', name: 'eat' }, { type: 'sound', name: 'munch' }]);
+        this.applyFx([{ type: 'anim', name: 'eat' }, { type: 'sound', name: 'treat' }]);
         this.pushBubble({ text: pick(this.rng, 'treat'), kind: 'treat' });
         break;
       }
@@ -358,7 +358,7 @@ class Brain extends EventEmitter {
           const evolved = C.formForLevel(lvl) !== oldForm;
           this.applyFx([
             { type: 'anim', name: 'party', big: evolved },
-            { type: 'sound', name: evolved ? 'fanfare' : 'levelup' },
+            { type: 'sound', name: evolved ? 'transform' : 'levelup' },
             { type: 'bubble', text: pick(this.rng, evolved ? 'evolve' : 'levelUp'), kind: 'levelUp' }
           ]);
         }
@@ -409,7 +409,7 @@ class Brain extends EventEmitter {
         break;
       }
       case 'playSound': { // debug
-        this.applyFx([{ type: 'sound', name: String(cmd.name || 'party'), important: true }]);
+        this.applyFx([{ type: 'sound', name: String(cmd.name || 'ding'), important: true }]);
         break;
       }
       case 'testBubble': { // debug
@@ -435,7 +435,7 @@ class Brain extends EventEmitter {
       const evolved = C.formForLevel(newLevel) !== oldForm;
       this.applyFx([
         { type: 'anim', name: 'party', big: evolved },
-        { type: 'sound', name: evolved ? 'fanfare' : 'levelup' },
+        { type: 'sound', name: evolved ? 'transform' : 'levelup' },
         { type: 'bubble', text: pick(this.rng, evolved ? 'evolve' : 'levelUp'), kind: 'levelUp' }
       ]);
     }

@@ -37,7 +37,7 @@ function addXp(state, amount, fx, ctx) {
       if (newForm !== oldForm) {
         fx.push({ type: 'anim', name: 'party', big: true });
         fx.push({ type: 'bubble', text: pick(ctx.rng, 'evolve'), kind: 'evolve' });
-        fx.push({ type: 'sound', name: 'fanfare' });
+        fx.push({ type: 'sound', name: 'transform' });
         fx.push({ type: 'milestone', name: 'evolve', form: newForm, level: state.level });
       } else {
         fx.push({ type: 'anim', name: 'party', big: false });
@@ -70,6 +70,7 @@ function wakeIfSleeping(state, fx, ctx) {
   if (!state.sleeping) return;
   state.sleeping = false;
   anim(fx, ctx, 'wake');
+  sound(fx, ctx, 'wake');
   say(fx, ctx, 0.5, 'wake');
 }
 
@@ -85,6 +86,7 @@ function reduceBash(state, ev, fx, ctx) {
     if (ev.ok === false) {
       addMood(state, TUNING.toolFailMood);
       anim(fx, ctx, 'sulk');
+      sound(fx, ctx, 'sad');
       say(fx, ctx, 0.6, 'toolFail');
     }
     return;
@@ -95,10 +97,10 @@ function reduceBash(state, ev, fx, ctx) {
       addMood(state, TUNING.commit.mood);
       state.lifetimeCommits += 1;
       anim(fx, ctx, 'party');
-      sound(fx, ctx, 'party');
+      sound(fx, ctx, 'commit');
       if (state.lifetimeCommits % TUNING.commitMilestoneEvery === 0) {
         anim(fx, ctx, 'party', { big: true });
-        sound(fx, ctx, 'fanfare');
+        sound(fx, ctx, 'milestone');
         say(fx, ctx, 1, null, { text: `commit #${state.lifetimeCommits}!! 🎉`, kind: 'milestone' });
         if (ctx.live) fx.push({ type: 'milestone', name: 'commits', count: state.lifetimeCommits });
       } else {
@@ -110,6 +112,7 @@ function reduceBash(state, ev, fx, ctx) {
     case 'commit-failed': {
       addMood(state, -3);
       anim(fx, ctx, 'sulk');
+      sound(fx, ctx, 'sad');
       say(fx, ctx, 0.6, 'commitFailed');
       break;
     }
@@ -117,10 +120,10 @@ function reduceBash(state, ev, fx, ctx) {
       state.greenStreak += 1;
       const n = c.counts && c.counts.passed;
       anim(fx, ctx, 'party');
-      sound(fx, ctx, 'party');
+      sound(fx, ctx, 'green');
       if (state.greenStreak > 0 && state.greenStreak % TUNING.greenStreakMilestone === 0) {
         say(fx, ctx, 1, null, { text: `${state.greenStreak} green runs straight!! ✓✓`, kind: 'milestone' });
-        sound(fx, ctx, 'fanfare');
+        sound(fx, ctx, 'milestone');
         if (ctx.live) fx.push({ type: 'milestone', name: 'greenStreak', count: state.greenStreak });
       } else if (n != null) {
         say(fx, ctx, 0.9, null, { text: `${n} test${n === 1 ? '' : 's'} green ✓`, kind: 'tests' });
@@ -134,7 +137,7 @@ function reduceBash(state, ev, fx, ctx) {
       addMood(state, TUNING.testsRedMood);
       state.greenStreak = 0;
       anim(fx, ctx, 'sulk');
-      sound(fx, ctx, 'sad');
+      sound(fx, ctx, 'red');
       const n = c.counts && c.counts.failed;
       say(fx, ctx, 0.95, null, {
         text: n != null ? `${n} test${n === 1 ? '' : 's'} red…` : 'tests failed…',
@@ -148,21 +151,21 @@ function reduceBash(state, ev, fx, ctx) {
     }
     case 'pr-create': {
       anim(fx, ctx, 'party');
-      sound(fx, ctx, 'party');
+      sound(fx, ctx, 'merge');
       say(fx, ctx, 0.9, 'prCreate');
       addXp(state, TUNING.prXp, fx, ctx);
       break;
     }
     case 'pr-merge': {
       anim(fx, ctx, 'party');
-      sound(fx, ctx, 'party');
+      sound(fx, ctx, 'merge');
       say(fx, ctx, 0.9, 'prMerge');
       addXp(state, TUNING.prXp, fx, ctx);
       break;
     }
     case 'deploy': {
       anim(fx, ctx, 'party', { big: true });
-      sound(fx, ctx, 'fanfare');
+      sound(fx, ctx, 'deploy');
       say(fx, ctx, 1, 'deploy');
       addXp(state, TUNING.deployXp, fx, ctx);
       break;
@@ -170,13 +173,14 @@ function reduceBash(state, ev, fx, ctx) {
     case 'push': case 'merge': case 'install':
     case 'branch': case 'stash': case 'build': {
       const pools = { push: 'push', merge: 'merge', install: 'install', branch: 'branch', stash: 'stash', build: 'build' };
-      sound(fx, ctx, 'blip');
+      sound(fx, ctx, 'ding');
       say(fx, ctx, 0.7, pools[c.kind]);
       addXp(state, TUNING.smallCmdXp, fx, ctx);
       break;
     }
     case 'rm-rf': {
       anim(fx, ctx, 'flinch');
+      sound(fx, ctx, 'warn');
       say(fx, ctx, 1, 'rmRf');
       break;
     }
@@ -195,6 +199,7 @@ function reduce(state, ev, ctx) {
       touch(state, ev, true);
       addFood(state, TUNING.foodPerPrompt);
       anim(fx, ctx, 'eat');
+      sound(fx, ctx, 'prompt');
       if (state.food > 150) say(fx, ctx, 0.5, 'promptChonk');
       else if (state.food < 10 + TUNING.foodPerPrompt) say(fx, ctx, 0.6, 'promptStarving');
       else say(fx, ctx, 0.25, 'prompt');
@@ -219,11 +224,12 @@ function reduce(state, ev, ctx) {
         combo.lastAt = ev.ts;
         if (TUNING.comboAt.includes(combo.count)) {
           anim(fx, ctx, 'party');
-          sound(fx, ctx, 'party');
+          sound(fx, ctx, 'combo');
           say(fx, ctx, 1, null, { text: `${combo.count}x ${pick(ctx.rng, 'combo')}`, kind: 'combo' });
           if (ctx.live) fx.push({ type: 'milestone', name: 'combo', count: combo.count });
         } else {
           anim(fx, ctx, 'eat');
+          sound(fx, ctx, 'eat'); // throttled hard renderer-side: a busy session is not a metronome
           say(fx, ctx, 0.08, 'edit');
         }
         addXp(state, TUNING.xpPerEdit, fx, ctx);
@@ -231,6 +237,7 @@ function reduce(state, ev, ctx) {
         if (ev.ok === false && !ev.cmd) {
           addMood(state, TUNING.toolFailMood);
           anim(fx, ctx, 'sulk');
+          sound(fx, ctx, 'sad');
         } else {
           // classified kinds (tests-red, commit-failed…) carry their own
           // penalties; reduceBash also handles unclassified failures
@@ -239,6 +246,7 @@ function reduce(state, ev, ctx) {
       } else if (ev.ok === false) {
         addMood(state, TUNING.toolFailMood);
         anim(fx, ctx, 'sulk');
+        sound(fx, ctx, 'sad');
         say(fx, ctx, 0.4, 'toolFail');
       } else if (isQuietTool(tool)) {
         say(fx, ctx, 0.04, 'whisper');
@@ -251,7 +259,7 @@ function reduce(state, ev, ctx) {
       touch(state, ev, false);
       if (ctx.live) {
         fx.push({ type: 'anim', name: 'attention' });
-        fx.push({ type: 'sound', name: 'chime', important: true });
+        fx.push({ type: 'sound', name: 'notify', important: true });
         fx.push({
           type: 'bubble',
           text: ev.msg || 'Claude needs you!',
@@ -265,6 +273,7 @@ function reduce(state, ev, ctx) {
       wakeIfSleeping(state, fx, ctx);
       touch(state, ev, true);
       anim(fx, ctx, 'wake');
+      sound(fx, ctx, 'wake');
       say(fx, ctx, 0.8, 'sessionStart');
       break;
     }
@@ -272,6 +281,7 @@ function reduce(state, ev, ctx) {
       touch(state, ev, false);
       addEnergy(state, TUNING.stopEnergy);
       anim(fx, ctx, 'wave');
+      sound(fx, ctx, 'bye');
       say(fx, ctx, 0.35, 'sessionEnd');
       break;
     }
@@ -327,6 +337,7 @@ function tick(state, now, ctx) {
   if (!state.sleeping && state.energy < TUNING.sleepEnergyBelow && quietMs >= TUNING.sleepQuietMs) {
     state.sleeping = true;
     anim(fx, ctx, 'sleep');
+    sound(fx, ctx, 'sleep');
     say(fx, ctx, 0.5, 'sleepy');
   }
   if (state.sleeping) addEnergy(state, TUNING.energyRecoverPerMin * 2 * dtMin);
@@ -343,7 +354,7 @@ function checkTokenMilestone(state, ctx) {
     state.tokenMilestonesAwarded = millions;
     if (ctx.live) {
       fx.push({ type: 'anim', name: 'party', big: true });
-      fx.push({ type: 'sound', name: 'fanfare' });
+      fx.push({ type: 'sound', name: 'milestone' });
       fx.push({ type: 'bubble', text: `${millions} million tokens spoken!! ✨`, kind: 'milestone' });
       fx.push({ type: 'milestone', name: 'tokens', millions });
     }

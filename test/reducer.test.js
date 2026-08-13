@@ -122,7 +122,7 @@ test('notification relays the actual message, important, even in replay-mute ter
   assert.ok(bubble.important);
   assert.match(bubble.text, /permission to use Bash/);
   assert.ok(fx.some(f => f.type === 'anim' && f.name === 'attention'));
-  assert.ok(fx.some(f => f.type === 'sound' && f.name === 'chime' && f.important));
+  assert.ok(fx.some(f => f.type === 'sound' && f.name === 'notify' && f.important));
 });
 
 test('tool failure hurts mood', () => {

@@ -183,7 +183,11 @@ for (const a of DEBUG_ANIMS) {
   });
   $('debug-anims').appendChild(b);
 }
-const DEBUG_SOUNDS = ['blip', 'pop', 'munch', 'party', 'fanfare', 'levelup', 'sad', 'chime', 'equip'];
+const DEBUG_SOUNDS = [
+  'prompt', 'eat', 'pet', 'treat', 'commit', 'green', 'red', 'merge', 'deploy',
+  'combo', 'milestone', 'levelup', 'transform', 'equip', 'ding', 'gossip',
+  'notify', 'warn', 'sad', 'sleep', 'wake', 'bye'
+];
 for (const snd of DEBUG_SOUNDS) {
   const b = document.createElement('button');
   b.textContent = '♪ ' + snd;

@@ -70,7 +70,7 @@ class SessionRegistry {
       if (pct >= TUNING.ctxWarn2 && !s.warned90) {
         s.warned90 = true; s.warned75 = true;
         fx.push({ type: 'anim', name: 'attention' });
-        fx.push({ type: 'sound', name: 'chime', important: true });
+        fx.push({ type: 'sound', name: 'warn', important: true });
         fx.push({
           type: 'bubble', important: true, kind: 'ctx-warning',
           text: `${this.label(s)} ctx ~${Math.round(pct * 100)}% — /compact now!!`
@@ -93,6 +93,7 @@ class SessionRegistry {
         && now - this.lastReportAt >= TUNING.ctxReportEveryMs) {
       this.lastReportAt = now;
       const live = this.liveSessions();
+      fx.push({ type: 'sound', name: 'gossip' });
       fx.push({
         type: 'bubble', kind: 'ctx-report',
         text: `${live.length} session${live.length === 1 ? '' : 's'} · worst ctx ~${Math.round(worst.pct * 100)}% · ${this.burnLabel(now)}/5h`
