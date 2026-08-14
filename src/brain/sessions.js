@@ -66,7 +66,7 @@ class SessionRegistry {
     let s = this.sessions.get(sid);
     if (!s) {
       s = {
-        sid, project: null, transcript: null, live: true,
+        sid, project: null, cwd: null, transcript: null, live: true,
         ctxTokens: null,                // null = never read one. Not zero.
         ctxAt: 0,                       // timestamp of the reading above
         model: null,
@@ -92,6 +92,10 @@ class SessionRegistry {
     const s = this.session(ev.sid);
     s.lastActivityAt = Math.max(s.lastActivityAt, ev.ts || 0);
     if (ev.project) s.project = ev.project;
+    // The full path, kept so a click on this session's line can go and find
+    // the terminal it is running in. Never displayed — the line shows the
+    // basename, which is all that fits.
+    if (ev.cwd) s.cwd = ev.cwd;
     if (ev.tp) s.transcript = ev.tp;
     if (ev.t === 'SessionEnd') s.live = false;
     else s.live = true;
@@ -379,7 +383,7 @@ class SessionRegistry {
   summary(now) {
     const live = this.liveSessions()
       .map(s => ({
-        sid: s.sid, project: this.label(s), pct: this.ctxFraction(s),
+        sid: s.sid, project: this.label(s), cwd: s.cwd, pct: this.ctxFraction(s),
         status: s.status, statusAt: s.statusAt
       }))
       // unknown context sorts last: it is the absence of a reading, not a low one

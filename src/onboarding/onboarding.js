@@ -55,6 +55,7 @@ function render(s) {
 
   if (document.activeElement !== $('name')) $('name').value = s.name;
   $('t-sound').checked = s.soundOn;
+  $('t-gravity').checked = s.toggles.gravity;
   if (document.activeElement !== $('scale')) $('scale').value = s.scale;
   $('scale-label').textContent = Math.round(s.scale * 100) + '%';
 
@@ -100,6 +101,9 @@ $('name').addEventListener('input', () => {
 });
 $('t-sound').addEventListener('change', () => {
   if (!suppress) petAPI.command({ type: 'setSound', on: $('t-sound').checked });
+});
+$('t-gravity').addEventListener('change', () => {
+  if (!suppress) petAPI.command({ type: 'setToggle', key: 'gravity', value: $('t-gravity').checked });
 });
 $('scale').addEventListener('input', () => {
   if (!suppress) petAPI.command({ type: 'setScale', value: Number($('scale').value) });

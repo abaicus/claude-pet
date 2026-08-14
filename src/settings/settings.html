@@ -156,6 +156,16 @@
   button.danger { border-color: var(--danger); color: var(--danger); box-shadow: 3px 3px 0 var(--danger); }
   button.danger:hover, button.danger.armed { background: var(--danger); color: var(--paper); }
 
+  /* ---- demo reel progress ---- */
+  /* Hard edges and whole steps, like everything else in this window: a smooth
+     gradient bar would be the one soft thing on the page. */
+  .bar {
+    height: 12px; margin-top: 10px;
+    border: 3px solid var(--ink); background: var(--paper-2);
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+  .bar i { display: block; height: 100%; width: 0; background: var(--ink); }
+
   /* ---- palette swatches ---- */
   .swatches { display: flex; gap: 10px; flex-wrap: wrap; }
   .swatch {
@@ -256,11 +266,24 @@
         <div class="row"><label for="t-bubbles">speech bubbles</label><input type="checkbox" id="t-bubbles"></div>
         <div class="row"><label for="t-stats">stats line <em>on hover</em></label><input type="checkbox" id="t-stats"></div>
         <div class="row"><label for="t-glow">glow</label><input type="checkbox" id="t-glow"></div>
+        <div class="row"><label for="t-gravity">gravity <em>throw it and it falls; place it and it stays</em></label><input type="checkbox" id="t-gravity"></div>
         <div class="row"><span>size</span><input type="range" id="scale" min="1" max="2.5" step="0.25"><span id="scale-label" class="val"></span></div>
       </div>
     </div>
 
     <div class="panel" id="panel-debug" role="tabpanel" aria-labelledby="tab-debug" hidden>
+      <div class="section">
+        <div class="label">DEMO REEL <em>a day in forty seconds</em></div>
+        <div class="row">
+          <button id="demo-toggle" class="grow">play the reel ▸</button>
+        </div>
+        <div class="bar"><i id="demo-bar"></i></div>
+        <div class="note">plays a scripted day through the real reducer — it eats,
+          sulks, recovers, ships and evolves three times.<br>
+          it <b>borrows</b> the pet: whatever it was before the reel is put back
+          at the end, so you can run it again. no real xp is earned or lost.</div>
+      </div>
+
       <div class="section">
         <div class="label">STATE <em>drag to forge a mood</em></div>
         <div class="row"><span class="val" style="text-align:left;min-width:44px">level</span><input type="range" id="dbg-level" min="0" max="25" step="1"><span class="val" id="dbg-level-label"></span></div>

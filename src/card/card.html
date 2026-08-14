@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Pet card</title>
+<style>
+  :root { --ink: #2b2b2b; --paper: #fdfcf5; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: transparent;
+    font-family: "SF Mono", ui-monospace, Menlo, monospace;
+    user-select: none; cursor: default;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px;
+  }
+  /* The card is a canvas and nothing else, so what you save is exactly what
+     you see — no screenshot, no window chrome, no scaling surprises. */
+  #card {
+    width: 420px; height: 240px;
+    -webkit-app-region: drag;
+    box-shadow: 6px 6px 0 rgba(43,43,43,0.25);
+  }
+  #actions { display: flex; gap: 8px; -webkit-app-region: no-drag; }
+  button {
+    border: 3px solid var(--ink); background: var(--paper); color: var(--ink);
+    box-shadow: 3px 3px 0 var(--ink);
+    padding: 6px 11px; font: inherit; font-size: 11px; letter-spacing: 0.5px;
+    text-transform: uppercase; cursor: pointer;
+  }
+  button:hover { background: var(--ink); color: var(--paper); }
+  button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+</style>
+</head>
+<body>
+  <canvas id="card"></canvas>
+  <div id="actions">
+    <button id="save">save png</button>
+    <button id="copy">copy</button>
+    <button id="close">close</button>
+  </div>
+<script src="../body/art.js"></script>
+<script src="card.js"></script>
+</body>
+</html>

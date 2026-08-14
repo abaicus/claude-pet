@@ -13,11 +13,15 @@ const { defaultState, resetState, migrate, defaultPrefs, migratePrefs } = requir
 const { reduce, tick, checkTokenMilestone, ensureWords } = require('./reducer');
 const { LogTailer } = require('./tailer');
 const { SessionRegistry } = require('./sessions');
+const { DemoReel } = require('./demo');
+const { note, rollover } = require('./ledger');
+const { receiptLines, receiptTeaser } = require('./receipt');
 const { pick } = require('./quips');
 const installer = require('../capture/installer');
 
 const TICK_MS = 5000;
 const SESSION_POLL_MS = 10000;
+const DEMO_TICK_MS = 150;   // the reel's beats are ~1s apart; this is fine grain
 const LIVE_EVENT_MAX_AGE_MS = 30 * 1000;
 
 class Brain extends EventEmitter {
@@ -62,6 +66,9 @@ class Brain extends EventEmitter {
     this.replayDone = false;
     this.log = [];             // recent events for the debug log view
     this.emitScheduled = false;
+    this.demo = new DemoReel();
+    this.demoSnapshot = null;  // the pet as it was before the reel borrowed it
+    this.demoTimer = null;
 
     this.tailer = new LogTailer({ file: this.files.events, offset: this.cursor.events });
     this.tailer.on('events', (events, meta) => this.onEvents(events, meta));
@@ -91,7 +98,61 @@ class Brain extends EventEmitter {
     for (const t of this.timers) clearInterval(t); // clears timeouts too
     if (this.pollSoon) { clearTimeout(this.pollSoon); this.pollSoon = null; }
     this.timers = [];
+    // Quitting mid-reel must not save the reel's pet over the real one.
+    if (this.demo.running) this.stopDemo();
     this.flush();
+  }
+
+  // ------------------------------------------------------------- demo reel
+  // Everything the reel does, it does through the commands the debug tab
+  // already fires by hand — so a beat cannot reach anything a person couldn't.
+  // It BORROWS the pet: the state it started from is put back when it ends, so
+  // the same forty seconds can be played again before the next meeting and
+  // evolve all over again. That also means a demo costs you no real progress
+  // and — the part worth knowing — grants you none.
+  startDemo() {
+    if (this.demo.running) this.stopDemo();
+    this.demoSnapshot = {
+      state: JSON.parse(JSON.stringify(this.state)),
+      accessory: this.prefs.accessory
+    };
+    this.demo.start(this.now());
+    if (!this.demoTimer) {
+      this.demoTimer = setInterval(() => this.demoTick(), DEMO_TICK_MS);
+      if (this.demoTimer.unref) this.demoTimer.unref();
+    }
+    this.scheduleEmit();
+    return { ok: true, durationMs: this.demo.durationMs };
+  }
+
+  stopDemo() {
+    this.demo.stop();
+    if (this.demoTimer) { clearInterval(this.demoTimer); this.demoTimer = null; }
+    if (this.demoSnapshot) {
+      this.state = this.demoSnapshot.state;
+      this.prefs.accessory = this.demoSnapshot.accessory;
+      // …but not the clock. Restoring a 40-second-old lastTickAt would bill the
+      // pet for the whole reel as idle time the moment the next tick lands.
+      this.state.lastTickAt = this.now();
+      this.demoSnapshot = null;
+      this.stateSaver.markDirty();
+      this.prefsSaver.markDirty();
+    }
+    this.scheduleEmit();
+    return { ok: true };
+  }
+
+  demoTick() {
+    const now = this.now();
+    for (const beat of this.demo.due(now)) {
+      if (typeof beat.level === 'number') this.command({ type: 'debugSetLevel', level: beat.level });
+      if (beat.event) this.command({ type: 'debugEvent', name: beat.event });
+      // The narration bypasses the bubble toggle: a muted pet in a demo is a
+      // pet that looks broken.
+      if (beat.say) this.pushBubble({ text: beat.say, important: true, kind: 'demo' });
+    }
+    if (this.demo.finished(now)) this.stopDemo();
+    this.scheduleEmit();
   }
 
   flush() {
@@ -154,6 +215,7 @@ class Brain extends EventEmitter {
   onTick() {
     const now = this.now();
     const ctx = { now, rng: this.rng, live: true };
+    rollover(this.state, now); // …so a receipt opened after midnight is today's
     this.applyFx(ensureWords(tick(this.state, now, ctx), ctx));
     this.maybeGossip(now);
     if (this.bubble && now > this.bubble.until) this.bubble = null;
@@ -167,6 +229,8 @@ class Brain extends EventEmitter {
     this.applyFx(fx);
     if (outputTokensDelta > 0) {
       this.state.lifetimeOutputTokens += outputTokensDelta;
+      rollover(this.state, now);
+      note(this.state, 'tokens', outputTokensDelta);
       this.applyFx(checkTokenMilestone(this.state, { now, rng: this.rng, live: true }));
       this.stateSaver.markDirty();
     }
@@ -261,16 +325,19 @@ class Brain extends EventEmitter {
     if (!cmd || typeof cmd.type !== 'string') return { ok: false, reason: 'bad command' };
     const now = this.now();
     const ctx = { now, rng: this.rng, live: true };
+    rollover(this.state, now); // a treat at 00:01 belongs to the new day
     let result = { ok: true };
 
     switch (cmd.type) {
       case 'pet': {
+        note(this.state, 'pets');
         if (this.state.sleeping) { this.state.sleeping = false; this.applyFx([{ type: 'anim', name: 'wake' }]); }
         this.applyFx([{ type: 'anim', name: 'hearts' }]);
         addClamped(this.state, 'mood', TUNING.petMood);
         if (now - this.state.petXpAt >= TUNING.petXpCooldownMs) {
           this.state.petXpAt = now; // xp from petting is rate-limited: not farmable
           this.state.xp += TUNING.petXp;
+          note(this.state, 'xp', TUNING.petXp);
           this.recheckLevel(ctx);
         }
         if (this.rng() < TUNING.petFactChance) {
@@ -293,9 +360,11 @@ class Brain extends EventEmitter {
           break;
         }
         this.state.treatAt = now;
+        note(this.state, 'treats');
         this.state.food += TUNING.treat.food;
         addClamped(this.state, 'mood', TUNING.treat.mood);
         this.state.xp += TUNING.treat.xp;
+        note(this.state, 'xp', TUNING.treat.xp);
         this.recheckLevel(ctx);
         this.applyFx([{ type: 'anim', name: 'eat' }, { type: 'sound', name: 'treat' }]);
         this.pushBubble({ text: pick(this.rng, 'treat'), kind: 'treat' });
@@ -331,7 +400,7 @@ class Brain extends EventEmitter {
         break;
       }
       case 'setToggle': {
-        if (!['bubbles', 'statsLine', 'glow'].includes(cmd.key)) { result = { ok: false, reason: 'unknown toggle' }; break; }
+        if (!['bubbles', 'statsLine', 'glow', 'gravity'].includes(cmd.key)) { result = { ok: false, reason: 'unknown toggle' }; break; }
         this.prefs[cmd.key] = !!cmd.value;
         break;
       }
@@ -407,7 +476,7 @@ class Brain extends EventEmitter {
           const newForm = C.formForLevel(lvl);
           const evolved = newForm !== oldForm;
           this.applyFx([
-            { type: 'anim', name: 'party', big: evolved },
+            { type: 'anim', name: evolved ? 'evolve' : 'party', big: evolved },
             { type: 'sound', name: evolved ? (newForm === 'hatchling' ? 'hatch' : 'transform') : 'levelup' },
             { type: 'bubble', text: pick(this.rng, evolved ? 'evolve' : 'levelUp'), kind: 'levelUp' }
           ]);
@@ -502,6 +571,15 @@ class Brain extends EventEmitter {
         }
         break;
       }
+      case 'focusFailed': {
+        // The window could not be found. Say so — a click that appears to do
+        // nothing is worse than one that admits it missed.
+        this.pushBubble({ text: pick(this.rng, 'focusFailed'), kind: 'focus' });
+        this.applyFx([{ type: 'sound', name: 'nope' }]);
+        break;
+      }
+      case 'startDemo': result = this.startDemo(); break;
+      case 'stopDemo': result = this.stopDemo(); break;
       case 'installHooks': result = this.installHooks(); break;
       case 'uninstallHooks': result = this.uninstallHooks(); break;
       default: result = { ok: false, reason: 'unknown command' };
@@ -516,16 +594,39 @@ class Brain extends EventEmitter {
   recheckLevel(ctx) {
     const newLevel = C.levelForXp(this.state.xp);
     if (newLevel > this.state.level) {
+      note(this.state, 'levels', newLevel - this.state.level);
       const oldForm = C.formForLevel(this.state.level);
       this.state.level = newLevel;
       const newForm = C.formForLevel(newLevel);
       const evolved = newForm !== oldForm;
       this.applyFx([
-        { type: 'anim', name: 'party', big: evolved },
+        { type: 'anim', name: evolved ? 'evolve' : 'party', big: evolved },
         { type: 'sound', name: evolved ? (newForm === 'hatchling' ? 'hatch' : 'transform') : 'levelup' },
         { type: 'bubble', text: pick(this.rng, evolved ? 'evolve' : 'levelUp'), kind: 'levelUp' }
       ]);
     }
+  }
+
+  // ------------------------------------------------------------- receipt
+  // The day, printed. Computed on demand rather than pushed with every state
+  // emit: it is thirty lines of text that nothing looks at until somebody asks
+  // for it, and it must be current at the moment they do.
+  receipt() {
+    const now = this.now();
+    rollover(this.state, now);
+    return receiptLines(this.state.day, {
+      name: this.prefs.name,
+      level: this.state.level,
+      xp: this.state.xp,
+      xpNext: this.state.level < C.MAX_LEVEL ? C.XP_LADDER[this.state.level + 1] : null,
+      now
+    });
+  }
+
+  /** The same day, in the one line a menu has room for. */
+  receiptTeaser() {
+    rollover(this.state, this.now());
+    return receiptTeaser(this.state.day);
   }
 
   // ------------------------------------------------------------- render state
@@ -587,6 +688,9 @@ class Brain extends EventEmitter {
         const name = x.project.length > 18 ? x.project.slice(0, 17) + '…' : x.project;
         return {
           kind: x.status,
+          // Carried so a click on the line can go and raise the terminal this
+          // session is running in. The line itself still shows only the name.
+          cwd: x.cwd || null,
           text: `${st.glyph} ${name} · ${st.label}${age ? ' ' + age : ''}${ctxPart}`
         };
       });
@@ -609,21 +713,33 @@ class Brain extends EventEmitter {
       food: Math.round(s.food),
       energy: Math.round(s.energy),
       sleeping: s.sleeping,
+      sick: !!s.sick,
       greenStreak: s.greenStreak,
+      born: s.born,
       lifetimeCommits: s.lifetimeCommits,
       lifetimeOutputTokens: s.lifetimeOutputTokens,
       idleMs: s.lastMeaningfulAt ? now - s.lastMeaningfulAt : null,
-      wanderOk: !s.sleeping && s.lastMeaningfulAt > 0 && (now - s.lastMeaningfulAt) > TUNING.wanderAfterIdleMs,
+      // A sick pet stays put. Wandering is what it does when it feels fine.
+      wanderOk: !s.sleeping && !s.sick && s.lastMeaningfulAt > 0 &&
+        (now - s.lastMeaningfulAt) > TUNING.wanderAfterIdleMs,
       bubble: this.bubble && now < this.bubble.until ? this.bubble : null,
       fx: this.fxQueue.slice(),
       sounds: this.soundQueue.slice(),
       statsLine: this.statsLine(now),
-      toggles: { bubbles: this.prefs.bubbles, statsLine: this.prefs.statsLine, glow: this.prefs.glow },
+      toggles: {
+        bubbles: this.prefs.bubbles, statsLine: this.prefs.statsLine,
+        glow: this.prefs.glow, gravity: this.prefs.gravity
+      },
       scale: this.prefs.scale,
       soundOn: this.prefs.soundOn,
       volume: this.prefs.volume,
       clickThrough: this.prefs.clickThrough,
       onboarded: this.prefs.onboarded,
+      demo: {
+        running: this.demo.running,
+        elapsed: Math.round(this.demo.elapsed(now)),
+        total: this.demo.durationMs
+      },
       position: this.prefs.position,
       hooks: this.hooksStatus,
       sessions: this.sessions.summary(now),

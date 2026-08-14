@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Today's receipt</title>
+<style>
+  /* Thermal paper. The whole window is the slip: no card, no chrome, torn top
+     and bottom, and a monospace face because a till roll has exactly one. */
+  :root { --ink: #2b2b2b; --paper: #fdfcf5; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; min-height: 100%;
+    background: transparent;
+    font-family: "SF Mono", ui-monospace, Menlo, monospace;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    cursor: default;
+  }
+  /* A long day makes a long receipt. It scrolls rather than clipping, but with
+     no bar: a scrollbar down the side of a till slip is the one thing that
+     would give away that this is a web page. */
+  body { overflow-y: auto; }
+  body::-webkit-scrollbar { width: 0; height: 0; }
+  #sheet {
+    position: relative;
+    min-height: 100%;
+    margin: 0 14px;
+    padding: 26px 0 30px;
+    background: var(--paper);
+    /* The paper is dragged by its own body — the window has no titlebar. */
+    -webkit-app-region: drag;
+    /* Fibre: a barely-there vertical streak, the way a till roll prints. */
+    background-image:
+      repeating-linear-gradient(90deg, rgba(43,43,43,0.035) 0 1px, transparent 1px 4px);
+    box-shadow: 5px 0 0 rgba(43,43,43,0.18), -5px 0 0 rgba(43,43,43,0.18);
+  }
+  /* Torn edges: a row of triangles top and bottom, cut out of the paper. */
+  #sheet::before, #sheet::after {
+    content: ''; position: absolute; left: 0; right: 0; height: 10px;
+    background:
+      linear-gradient(45deg, transparent 50%, var(--paper) 51%) 0 0 / 12px 10px repeat-x,
+      linear-gradient(-45deg, transparent 50%, var(--paper) 51%) 0 0 / 12px 10px repeat-x;
+  }
+  #sheet::before { top: -9px; transform: scaleY(-1); }
+  #sheet::after { bottom: -9px; }
+
+  pre {
+    margin: 0; padding: 0 18px;
+    font: inherit; font-size: 12px; line-height: 1.45;
+    color: var(--ink);
+    white-space: pre;
+    letter-spacing: 0.2px;
+  }
+
+  /* The two things you can do with a receipt, in the language of the app's
+     other windows: hard border, hard shadow, no easing. */
+  #actions {
+    -webkit-app-region: no-drag;
+    display: flex; gap: 8px; justify-content: center;
+    margin-top: 18px; padding: 0 18px;
+  }
+  button {
+    border: 2px solid var(--ink); background: var(--paper); color: var(--ink);
+    box-shadow: 2px 2px 0 var(--ink);
+    padding: 5px 10px; font: inherit; font-size: 10px; letter-spacing: 0.5px;
+    text-transform: uppercase; cursor: pointer;
+  }
+  button:hover { background: var(--ink); color: var(--paper); }
+  button:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 var(--ink); }
+  #done { position: fixed; top: 8px; right: 20px; -webkit-app-region: no-drag; }
+</style>
+</head>
+<body>
+  <div id="sheet">
+    <pre id="roll">printing…</pre>
+    <div id="actions">
+      <button id="copy">copy</button>
+      <button id="close">close</button>
+    </div>
+  </div>
+<script src="receipt.js"></script>
+</body>
+</html>

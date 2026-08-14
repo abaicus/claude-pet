@@ -403,6 +403,27 @@
 
   // ---------------------------------------------------------------- accessories
   // Placement reads the silhouette (hw) so nothing floats or covers the face.
+  // A plaster on the forehead: what a pet wears after three red test runs.
+  // Deliberately NOT an accessory — accessories are earned and chosen, this is
+  // worn whether you like it or not, and the two must never share a slot or a
+  // sick pet would lose its hat.
+  //
+  // Tilted by one pixel across its two rows so it reads as something stuck ON
+  // the creature rather than a stripe painted into it, and parked above the
+  // eyes on the left slope, where no accessory sits and the face stays clear.
+  function drawBandage(ctx, F, hw) {
+    const eyeY = Math.round(F.h * F.eyeF);
+    const y = Math.min(F.h - 3, eyeY + F.eyeH + 1);
+    if (y < 0) return;
+    const w = Math.min(5, Math.max(3, hw[y] - 1));
+    const x0 = -Math.min(hw[y] - 1, Math.round(w / 2) + 1);
+    const TAN = '#e8b98d', PAD = '#fff3e2';
+    rect(ctx, x0, y, w, 1, TAN);
+    rect(ctx, x0 + 1, y + 1, w, 1, TAN);
+    px(ctx, x0 + Math.floor(w / 2), y, PAD);
+    px(ctx, x0 + 1 + Math.floor(w / 2), y + 1, PAD);
+  }
+
   function drawAccessory(ctx, id, F, hw, ramp, t) {
     const top = F.h - 1;                            // apex row of the dome
     const eyeY = Math.round(F.h * F.eyeF);
@@ -713,6 +734,20 @@
       : squashRows < 0 ? stretchMask(mask, -squashRows)
         : mask;
 
+    // ECLIPSE: the creature as one flat shape in one colour — no shading, no
+    // outline, no face, nothing it is wearing. Used for the half-second in the
+    // middle of an evolution, and it is the whole trick: the audience must not
+    // see one silhouette turn into the other, so for that moment there is no
+    // detail on screen to watch change. Everything below is skipped.
+    if (opts.eclipse) {
+      for (const cell of drawn) {
+        const [x, y] = cell.split(',').map(Number);
+        px(ctx, x, y, opts.eclipse);
+      }
+      ctx.restore();
+      return;
+    }
+
     if (opts.glow) drawRim(ctx, drawn);
     if (BEHIND.has(opts.accessory)) drawAccessory(ctx, opts.accessory, F, hw, ramp, t);
     drawMask(ctx, F, drawn, ramp, isEgg);
@@ -723,6 +758,9 @@
     if (opts.accessory && !BEHIND.has(opts.accessory)) {
       drawAccessory(ctx, opts.accessory, F, hw, ramp, t);
     }
+    // Last, and over the hat: a plaster under a top hat is a plaster nobody
+    // can see, and being sick has to be the loudest thing about the sprite.
+    if (opts.sick && !isEgg) drawBandage(ctx, F, hw);
     ctx.restore();
     ctx.restore();
   }

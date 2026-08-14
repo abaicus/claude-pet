@@ -63,6 +63,7 @@ function render(s) {
   $('t-bubbles').checked = s.toggles.bubbles;
   $('t-stats').checked = s.toggles.statsLine;
   $('t-glow').checked = s.toggles.glow;
+  $('t-gravity').checked = s.toggles.gravity;
   $('scale').value = s.scale;
   $('scale-label').textContent = Math.round(s.scale * 100) + '%';
   $('t-sound').checked = s.soundOn;
@@ -73,6 +74,13 @@ function render(s) {
   if (s.hooks.ok) hs.textContent = s.hooks.installed ? 'installed ✓' : 'not installed';
   else hs.textContent = s.hooks.reason || 'error';
   hs.classList.toggle('bad', !s.hooks.ok); // keep layout classes, only flag the error
+
+  // The reel is the brain's to run, so the button reads its state rather than
+  // remembering its own — closing this window mid-reel and reopening it must
+  // not offer to start a second one.
+  const demo = s.demo || { running: false, elapsed: 0, total: 1 };
+  $('demo-toggle').textContent = demo.running ? 'stop the reel ■' : 'play the reel ▸';
+  $('demo-bar').style.width = (demo.running ? Math.min(100, 100 * demo.elapsed / demo.total) : 0) + '%';
 
   // debug state sliders reflect the brain's truth unless being dragged
   const dbg = [
@@ -124,7 +132,7 @@ if (!navigator.platform.startsWith('Mac')) $('tabkey').textContent = 'CTRL+';
 $('name').addEventListener('change', () => {
   if (!suppress) petAPI.command({ type: 'setName', name: $('name').value });
 });
-for (const [id, key] of [['t-bubbles', 'bubbles'], ['t-stats', 'statsLine'], ['t-glow', 'glow']]) {
+for (const [id, key] of [['t-bubbles', 'bubbles'], ['t-stats', 'statsLine'], ['t-glow', 'glow'], ['t-gravity', 'gravity']]) {
   $(id).addEventListener('change', () => {
     if (!suppress) petAPI.command({ type: 'setToggle', key, value: $(id).checked });
   });
@@ -193,6 +201,10 @@ $('dbg-tokens').addEventListener('click', () => {
   const t = state ? state.lifetimeOutputTokens : 0;
   petAPI.command({ type: 'debugAdjust', key: 'lifetimeOutputTokens', value: Math.floor(t / 1e6) * 1e6 + 990_000 });
 });
+$('demo-toggle').addEventListener('click', () => {
+  petAPI.command({ type: state && state.demo && state.demo.running ? 'stopDemo' : 'startDemo' });
+});
+
 $('dbg-sleep').addEventListener('click', () => petAPI.command({ type: 'debugSleep', value: true }));
 $('dbg-wake').addEventListener('click', () => petAPI.command({ type: 'debugSleep', value: false }));
 

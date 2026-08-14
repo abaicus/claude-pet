@@ -129,8 +129,29 @@ test('main opens the intro on a first launch and never traps the user in it', ()
     'closing the window must count as done, or it reopens forever');
   assert.match(main, /label: 'Intro…'/, 'no way back to it once dismissed');
   // the pet window is not the only one that needs fresh state
-  assert.match(main, /for \(const win of \[petWin, settingsWin, onboardWin\]\)/,
-    'the intro window would never see a state change');
+  const fanout = main.match(/for \(const win of \[([^\]]+)\]\)/);
+  assert.ok(fanout, 'nothing broadcasts state to the windows');
+  for (const w of ['petWin', 'settingsWin', 'onboardWin']) {
+    assert.ok(fanout[1].includes(w), `${w} would never see a state change`);
+  }
+});
+
+test('the pet stays backstage until the intro is over', () => {
+  const main = fs.readFileSync(path.join(SRC, 'main.js'), 'utf8');
+  assert.match(main, /waitingForIntro = !brain\.prefs\.onboarded/,
+    'nothing decides whether the curtain is down');
+  assert.match(main, /show: !waitingForIntro/,
+    'the pet window would open on top of its own introduction');
+  assert.match(main, /if \(!waitingForIntro \|\| !state\.onboarded\) return;[\s\S]*?showInactive\(\)/,
+    'the curtain never lifts — the pet would be invisible after the intro');
+  // The state that ends the intro is also the one carrying the hatch party and
+  // the hello bubble, and a hidden window is not rendering to play them.
+  const body = main.slice(main.indexOf('function broadcast(state)'));
+  assert.ok(body.indexOf('revealPetAfterIntro(state)') < body.indexOf('for (const win of'),
+    'the pet is shown after its own greeting has already been sent');
+  // …and an unclickable, invisible pet with a stuck curtain needs a way out.
+  assert.match(main, /waitingForIntro = false; \/\/ asking for the pet by hand/,
+    '"Show pet" during the intro would be undone by the reveal');
 });
 
 test('the intro can only send commands the brain actually has', () => {

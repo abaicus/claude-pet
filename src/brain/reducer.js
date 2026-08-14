@@ -9,6 +9,7 @@
 const { TUNING, levelForXp, formForLevel, MAX_LEVEL } = require('../shared/constants');
 const { classifyBash } = require('./bash-parser');
 const { pick, EXT_FLAVOR, SOUND_QUIP } = require('./quips');
+const { note, rollover } = require('./ledger');
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const QUIET_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'TodoRead', 'Task', 'NotebookRead']);
@@ -40,14 +41,16 @@ function addFood(state, delta) { state.food = Math.max(0, state.food + delta); }
 function addXp(state, amount, fx, ctx) {
   if (amount <= 0) return;
   state.xp += amount;
+  note(state, 'xp', amount);
   const newLevel = levelForXp(state.xp);
   if (newLevel > state.level) {
+    note(state, 'levels', newLevel - state.level);
     const oldForm = formForLevel(state.level);
     state.level = Math.min(newLevel, MAX_LEVEL);
     const newForm = formForLevel(state.level);
     if (ctx.live) {
       if (newForm !== oldForm) {
-        fx.push({ type: 'anim', name: 'party', big: true });
+        fx.push({ type: 'anim', name: 'evolve', big: true });
         fx.push({ type: 'bubble', text: pick(ctx.rng, 'evolve'), kind: 'evolve' });
         fx.push({ type: 'sound', name: newForm === 'hatchling' ? 'hatch' : 'transform' });
         fx.push({ type: 'milestone', name: 'evolve', form: newForm, level: state.level });
@@ -143,6 +146,7 @@ function reduceBash(state, ev, fx, ctx) {
   }
   switch (c.kind) {
     case 'commit': {
+      note(state, 'commits');
       addFood(state, TUNING.commit.food);
       addMood(state, TUNING.commit.mood);
       state.lifetimeCommits += 1;
@@ -177,13 +181,32 @@ function reduceBash(state, ev, fx, ctx) {
     }
     case 'tests-green': {
       state.greenStreak += 1;
+      state.redRuns = 0;
+      note(state, 'testsGreen');
+      if (state.day && state.greenStreak > state.day.bestStreak) note(state, 'bestStreak', state.greenStreak - state.day.bestStreak);
       const n = c.counts && c.counts.passed;
-      anim(fx, ctx, 'party');
-      sound(fx, ctx, 'green');
+      // Getting better is the loudest thing a green run can be, so it takes the
+      // voice and the big party for itself. The streak and the milestone still
+      // count underneath — recovering from a bad afternoon should not also cost
+      // you the run that did it.
+      const cured = state.sick;
+      if (cured) {
+        state.sick = false;
+        addMood(state, TUNING.healMood);
+        addXp(state, TUNING.healXp, fx, ctx);
+        anim(fx, ctx, 'party', { big: true });
+        sound(fx, ctx, 'hatch');
+        say(fx, ctx, 1, 'healed');
+      } else {
+        anim(fx, ctx, 'party');
+        sound(fx, ctx, 'green');
+      }
       if (state.greenStreak > 0 && state.greenStreak % TUNING.greenStreakMilestone === 0) {
-        say(fx, ctx, 1, null, { text: `${state.greenStreak} green runs straight!! ✓✓`, kind: 'milestone' });
+        if (!cured) say(fx, ctx, 1, null, { text: `${state.greenStreak} green runs straight!! ✓✓`, kind: 'milestone' });
         sound(fx, ctx, 'milestone');
         if (ctx.live) fx.push({ type: 'milestone', name: 'greenStreak', count: state.greenStreak });
+      } else if (cured) {
+        /* the cure already spoke */
       } else if (n != null) {
         say(fx, ctx, 0.9, null, { text: `${n} test${n === 1 ? '' : 's'} green ✓`, kind: 'tests' });
       } else {
@@ -195,9 +218,23 @@ function reduceBash(state, ev, fx, ctx) {
     case 'tests-red': {
       addMood(state, TUNING.testsRedMood);
       state.greenStreak = 0;
+      state.redRuns = (state.redRuns || 0) + 1;
+      note(state, 'testsRed');
+      const n = c.counts && c.counts.failed;
+      // The third red run in a row is where a bad run becomes a bad afternoon,
+      // and the pet stops just sulking about it and puts a plaster on. It stays
+      // on — through restarts, through the night — until something goes green.
+      if (!state.sick && state.redRuns >= TUNING.sickAfterRedRuns) {
+        state.sick = true;
+        note(state, 'sick');
+        addMood(state, TUNING.sickMood);
+        anim(fx, ctx, 'shiver');
+        sound(fx, ctx, 'sad');
+        say(fx, ctx, 1, 'sick');
+        break;
+      }
       anim(fx, ctx, 'sulk');
       sound(fx, ctx, 'red');
-      const n = c.counts && c.counts.failed;
       say(fx, ctx, 0.95, null, {
         text: n != null ? `${n} test${n === 1 ? '' : 's'} red…` : 'tests failed…',
         kind: 'tests'
@@ -210,6 +247,7 @@ function reduceBash(state, ev, fx, ctx) {
       break;
     }
     case 'pr-create': {
+      note(state, 'prs');
       anim(fx, ctx, 'party');
       sound(fx, ctx, 'merge');
       say(fx, ctx, 0.9, 'prCreate');
@@ -217,6 +255,7 @@ function reduceBash(state, ev, fx, ctx) {
       break;
     }
     case 'pr-merge': {
+      note(state, 'prs');
       anim(fx, ctx, 'party');
       sound(fx, ctx, 'merge');
       say(fx, ctx, 0.9, 'prMerge');
@@ -224,6 +263,7 @@ function reduceBash(state, ev, fx, ctx) {
       break;
     }
     case 'deploy': {
+      note(state, 'deploys');
       anim(fx, ctx, 'party', { big: true });
       sound(fx, ctx, 'deploy');
       say(fx, ctx, 1, 'deploy');
@@ -231,6 +271,7 @@ function reduceBash(state, ev, fx, ctx) {
       break;
     }
     case 'release': {
+      note(state, 'releases');
       anim(fx, ctx, 'spin');
       sound(fx, ctx, 'release');
       say(fx, ctx, 1, 'release');
@@ -344,6 +385,8 @@ function reduceBash(state, ev, fx, ctx) {
 function reduceEdit(state, ev, fx, ctx) {
   const touched = (ev.add || 0) + (ev.del || 0);
   const feast = touched >= TUNING.feastLines;
+  note(state, 'edits');
+  if (feast) note(state, 'feasts');
   addFood(state, TUNING.foodPerEdit + (feast ? TUNING.feastFood : 0));
 
   const combo = state.combo;
@@ -392,6 +435,7 @@ function reduceTodos(state, ev, fx, ctx) {
     return;
   }
   if (cur.d > prev.d) {
+    note(state, 'todos', cur.d - prev.d);
     anim(fx, ctx, 'nod');
     sound(fx, ctx, 'todo');
     say(fx, ctx, 0.7, null, { text: `${cur.d}/${cur.n} done ✓`, kind: 'todo' });
@@ -450,11 +494,15 @@ function reduce(state, ev, ctx) {
   const fx = [];
   if (!ev || typeof ev.t !== 'string') return fx;
   if (typeof ev.ts !== 'number') ev.ts = ctx.now;
+  // One rollover per event, on the way in, so every note() below lands on the
+  // right day even if the clock crossed midnight since the last one.
+  rollover(state, ctx.now || ev.ts);
 
   switch (ev.t) {
     case 'UserPromptSubmit': {
       wakeIfSleeping(state, fx, ctx);
       touch(state, ev, true);
+      note(state, 'prompts');
       notePermissionMode(state, ev, fx, ctx);
       const plen = ev.plen || 0;
       const big = plen >= TUNING.longPromptLen;
@@ -595,6 +643,23 @@ function reduce(state, ev, ctx) {
 }
 
 // ---------------------------------------------------------------- passive
+/**
+ * Mood lost to loneliness over the slice of idleness one tick covers, given in
+ * minutes-since-the-last-meaningful-thing. The rate is a step function of IDLE
+ * time, so this is its integral across [from, to] — NOT the rate at `to` times
+ * the elapsed time. The two differ whenever a tick straddles a threshold, and
+ * a lid-close or an overnight makes one tick straddle both.
+ *
+ * `from` may be negative or before the last meaningful event (a long tick that
+ * contains one); clamping each span at its own start is what keeps the pet
+ * from being charged for minutes it was not actually alone.
+ */
+function lonelyDrift(from, to) {
+  const span = (a, b, rate) => Math.max(0, Math.min(to, b) - Math.max(from, a)) * rate;
+  return span(TUNING.lonelyAfterMin, TUNING.missedAfterMin, TUNING.lonelyMoodPerMin)
+       + span(TUNING.missedAfterMin, Infinity, TUNING.missedMoodPerMin);
+}
+
 // Called on a timer by the brain (and directly by tests). dt derived from
 // state.lastTickAt so replays/pauses behave.
 function tick(state, now, ctx) {
@@ -613,10 +678,13 @@ function tick(state, now, ctx) {
   // energy recovers while idle (no tool churn)
   if (idle > 60 * 1000) addEnergy(state, TUNING.energyRecoverPerMin * dtMin);
 
-  // loneliness after 30 quiet minutes
+  // Loneliness: a drift from 15 quiet minutes, steeper past 30. The WORDS stay
+  // on the old half-hour clock — stepping away for a coffee may cost a little
+  // mood, but it should not be met with complaining when you get back.
   if (idle > TUNING.lonelyAfterMin * 60 * 1000 && state.lastMeaningfulAt) {
-    addMood(state, TUNING.lonelyMoodPerMin * dtMin);
-    if (!state.sleeping && ctx.rng() < 0.04 * dtMin) {
+    const idleMin = idleMs / 60000;
+    addMood(state, lonelyDrift(idleMin - dtMin, idleMin));
+    if (idle > TUNING.missedAfterMin * 60 * 1000 && !state.sleeping && ctx.rng() < 0.04 * dtMin) {
       sound(fx, ctx, 'lonely');
       say(fx, ctx, 1, 'lonely');
     }

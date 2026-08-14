@@ -96,5 +96,13 @@ test('the stats line is raised on hover, not worn permanently', () => {
   // a mouseover, and that is precisely when it must still answer.
   assert.match(pet, /function updateHover/);
   assert.match(pet, /updateHover\(t, scale, feetY\)/, 'the hover check never runs');
-  assert.ok(!/:hover/.test(html), 'CSS :hover cannot see a click-through window');
+  // …with exactly one carve-out: a line you can CLICK may press in under the
+  // cursor. Those lines only accept a pointer at all when the window is not
+  // click-through, so :hover is available precisely when it is wanted, and
+  // nothing that must survive click-through leans on it.
+  const hovered = [...html.matchAll(/([^{}\n]*):hover[^{]*\{/g)].map(m => m[1].trim());
+  for (const sel of hovered) {
+    assert.match(sel, /\.goto/,
+      `"${sel}:hover" — CSS :hover cannot see a click-through window`);
+  }
 });
