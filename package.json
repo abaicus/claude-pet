@@ -1,7 +1,7 @@
 {
   "name": "gogu",
   "productName": "Gogu",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A desktop tamagotchi that feeds on Claude Code activity.",
   "main": "src/main.js",
   "private": true,
