@@ -156,6 +156,13 @@ const TUNING = {
   commit: { food: 10, mood: 15, xp: 25 },
   testsGreenXp: 20,
   testsRedMood: -10,
+  // Three red runs with nothing green between them and the pet is properly
+  // ill: a plaster it wears until the suite comes back. Curing it pays more
+  // than the run that broke it cost, so a bad afternoon ends better than even.
+  sickAfterRedRuns: 3,
+  sickMood: -12,
+  healMood: 30,
+  healXp: 25,
   prXp: 15,
   deployXp: 30,
   smallCmdXp: 5,
@@ -164,8 +171,14 @@ const TUNING = {
   energyPerToolCall: -0.8,
   energyRecoverPerMin: 3,     // while idle
   foodDecayPerMin: 1.2,
-  lonelyAfterMin: 30,
+  // Loneliness comes in two stages: a quarter of an hour of quiet is enough to
+  // start a slow drift, and past the half hour it turns into properly missing
+  // you. A pet left alone all morning should be visibly sad by the time you
+  // come back, and one you stepped away from for a coffee should not.
+  lonelyAfterMin: 15,
   lonelyMoodPerMin: -0.5,
+  missedAfterMin: 30,
+  missedMoodPerMin: -1.5,
   sleepEnergyBelow: 25,
   sleepQuietMs: 60 * 1000,    // never doze mid-work
   wanderAfterIdleMs: 3 * 60 * 1000,
@@ -222,6 +235,8 @@ const IPC = {
   moveWindow: 'pet:move-window', // pet renderer drag → main
   contextMenu: 'pet:context-menu',
   closeSettings: 'pet:close-settings',
+  land: 'pet:land',
+  focusSession: 'pet:focus-session',
   closeOnboarding: 'pet:close-onboarding'
 };
 

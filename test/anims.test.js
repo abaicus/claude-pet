@@ -18,7 +18,12 @@ const durTable = (name) => {
 // Fidgets the renderer plays on its own initiative. They are NOT part of the
 // brain seam — nothing in the brain may name one — so they are tracked
 // separately and excluded from the dead-weight check below.
-const idleAnims = () => new Set(durTable('IDLE_DUR').map(([n]) => n));
+// …as are the ones the window drives (landing after a fall). Same side of the
+// seam as the fidgets: the brain must not name them either.
+const idleAnims = () => new Set([
+  ...durTable('IDLE_DUR').map(([n]) => n),
+  ...durTable('WINDOW_DUR').map(([n]) => n)
+]);
 
 // Names the renderer can actually play: it either has a duration entry or is
 // handled explicitly in startAnim.
@@ -78,7 +83,7 @@ test('idle fidgets stay on the renderer side of the seam', () => {
 
 test('every animation has a duration and a body', () => {
   const src = petJs();
-  const durs = [...durTable('ANIM_DUR'), ...durTable('IDLE_DUR')];
+  const durs = [...durTable('ANIM_DUR'), ...durTable('IDLE_DUR'), ...durTable('WINDOW_DUR')];
   for (const [name, ms] of durs) {
     assert.ok(ms >= 300 && ms <= 3000, `${name} runs ${ms}ms — too ${ms < 300 ? 'quick to see' : 'long to sit through'}`);
   }
@@ -90,6 +95,32 @@ test('every animation has a duration and a body', () => {
     if (name === 'partyBig') continue;
     assert.ok(cased.has(name), `'${name}' has a duration but no motion — the pet would freeze`);
   }
+});
+
+// ---------------------------------------------------------------- ceremony
+// The evolution is the one animation that changes what is being DRAWN rather
+// than how it moves, and its phases have to stay in order or the pet flashes
+// white after it has already changed shape.
+test('the evolution phases are in order and inside the animation', () => {
+  const src = petJs();
+  const ev = src.match(/const EV = \{([^}]*)\}/)[1];
+  const phases = [...ev.matchAll(/([A-Z_]+):\s*([0-9.]+)/g)].map(m => [m[1], Number(m[2])]);
+  assert.deepEqual(phases.map(p => p[0]), ['FLASH_IN', 'SWAP', 'FLASH_OUT', 'SETTLE']);
+  const vals = phases.map(p => p[1]);
+  assert.deepEqual(vals, vals.slice().sort((a, b) => a - b), 'phases out of order');
+  for (const v of vals) assert.ok(v > 0 && v < 1, `${v} is not inside the animation`);
+  // The swap has to happen while the sprite is bleached, or the audience sees
+  // the old silhouette become the new one in plain colour.
+  const at = Object.fromEntries(phases);
+  assert.ok(at.SWAP > at.FLASH_IN && at.SWAP < at.FLASH_OUT, 'the shape changes in full view');
+});
+
+test('the ceremony knows which silhouette it is growing out of', () => {
+  const src = petJs();
+  assert.match(src, /if \(state && state\.form !== s\.form\) morphFrom = state\.form;/,
+    'nothing remembers the old form — there would be nothing to dissolve');
+  assert.match(src, /form: \(cer && cer\.from && cer\.el < EV\.SWAP\) \? cer\.from : s\.form/,
+    'the draw call never shows the old silhouette');
 });
 
 test('the debug anim grid only offers real animations', () => {

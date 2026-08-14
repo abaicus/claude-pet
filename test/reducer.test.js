@@ -91,6 +91,72 @@ test('green tests raise streak; 5 straight is a milestone; red resets', () => {
   assert.equal(s.mood, Math.max(0, moodBefore + TUNING.testsRedMood));
 });
 
+// ---------------------------------------------------------------- sickness
+const RED = { tool: 'Bash', cmd: 'npx jest', out: 'Tests: 2 failed, 7 passed, 9 total', ok: false };
+const GREEN = { tool: 'Bash', cmd: 'npx jest', out: 'Tests:       9 passed, 9 total' };
+const red = (s, n = 1) => { for (let i = 0; i < n; i++) reduce(s, ev('PostToolUse', RED, T0 + i), ctx(T0 + i)); };
+
+test('two red runs is a bad patch; the third is an illness', () => {
+  const s = fresh();
+  red(s, 2);
+  assert.equal(s.sick, false, 'sick after two — the rule is three');
+  assert.equal(s.redRuns, 2);
+  red(s, 1);
+  assert.equal(s.sick, true);
+});
+
+test('a green run in between wipes the count', () => {
+  const s = fresh();
+  red(s, 2);
+  reduce(s, ev('PostToolUse', GREEN), ctx());
+  assert.equal(s.redRuns, 0);
+  red(s, 2);
+  assert.equal(s.sick, false, 'reds either side of a green must not add up');
+});
+
+test('falling ill says so, and looks it', () => {
+  const s = fresh();
+  red(s, 2);
+  const fx = reduce(s, ev('PostToolUse', RED), ctx());
+  assert.ok(fx.some(f => f.type === 'anim' && f.name === 'shiver'));
+  assert.ok(fx.some(f => f.type === 'bubble'), 'fell ill in silence');
+  assert.ok(!fx.some(f => f.type === 'anim' && f.name === 'sulk'), 'sulking on top of falling ill');
+});
+
+test('one green run cures it, and pays better than the illness cost', () => {
+  const s = fresh();
+  const mood0 = s.mood, xp0 = s.xp;
+  red(s, 3);
+  assert.equal(s.sick, true);
+  const fx = reduce(s, ev('PostToolUse', GREEN), ctx());
+  assert.equal(s.sick, false);
+  assert.ok(fx.some(f => f.type === 'anim' && f.name === 'party' && f.big), 'the cure is a small party');
+  assert.ok(s.xp > xp0 + TUNING.testsGreenXp, 'curing paid no more than an ordinary green run');
+  assert.ok(s.mood > mood0 - 20, `a cured pet should not still be miserable (mood=${s.mood})`);
+});
+
+test('curing does not swallow the green streak underneath it', () => {
+  // The run that cures you is still a run: the streak, the milestone and the
+  // xp all have to survive being upstaged.
+  const s = fresh();
+  red(s, 3);
+  for (let i = 0; i < 5; i++) reduce(s, ev('PostToolUse', GREEN, T0 + i), ctx(T0 + i));
+  assert.equal(s.greenStreak, 5);
+  assert.equal(s.sick, false);
+});
+
+test('a sick pet stays put and shows it', () => {
+  const { Brain } = require('../src/brain/brain');
+  const os = require('os'), fsx = require('fs'), pathx = require('path');
+  const dir = fsx.mkdtempSync(pathx.join(os.tmpdir(), 'pet-sick-'));
+  const brain = new Brain({ dir, settingsPath: pathx.join(dir, 's.json'), rng: () => 0.99 });
+  brain.state.sick = true;
+  brain.state.lastMeaningfulAt = 1; // …long idle: it would otherwise be free to roam
+  const rs = brain.getRenderState();
+  assert.equal(rs.sick, true, 'the window cannot draw a plaster it cannot see');
+  assert.equal(rs.wanderOk, false, 'an ill pet went for a walk');
+});
+
 test('xp ladder: leveling and evolution effects', () => {
   const s = fresh();
   const fx = [];
@@ -149,14 +215,78 @@ test('food decays over time', () => {
   assert.ok(Math.abs(s.food - (50 - 12)) < 0.01, `food=${s.food}`);
 });
 
-test('loneliness after 30 idle minutes', () => {
+// Idle mood decay is a step function of idle time, and the interesting cases
+// are all at the joins: a pet that is merely away, one that has been left, and
+// a tick long enough to cover both (a closed lid, an overnight).
+// A lonely pet, ticked minute by minute so no single tick straddles anything.
+function idleFor(minutes, mood = 100) {
   const s = fresh();
   s.lastMeaningfulAt = T0;
   s.lastEventAt = T0;
+  s.mood = mood;
+  s.energy = 100;   // not sleepy — isolate loneliness
+  for (let m = 1; m <= minutes; m++) {
+    s.energy = 100; // …and it stays that way; recovery would put it to sleep
+    tick(s, T0 + m * 60_000, ctx(T0 + m * 60_000, true, () => 0.99));
+  }
+  return s;
+}
+
+test('the first quiet quarter of an hour is free', () => {
+  assert.equal(idleFor(TUNING.lonelyAfterMin).mood, 100, 'mood fell before the pet was lonely');
+});
+
+test('loneliness drifts gently from 15 minutes, steeply past 30', () => {
+  const gentle = TUNING.missedAfterMin - TUNING.lonelyAfterMin; // the whole first stage
+  assert.ok(Math.abs(idleFor(TUNING.missedAfterMin).mood -
+    (100 + gentle * TUNING.lonelyMoodPerMin)) < 0.01);
+  // …and a quarter hour into the second stage, both rates have been applied
+  const later = idleFor(TUNING.missedAfterMin + 15).mood;
+  assert.ok(Math.abs(later - (100 + gentle * TUNING.lonelyMoodPerMin + 15 * TUNING.missedMoodPerMin)) < 0.01,
+    `mood=${later}`);
+  // The bands are what the user actually sees. 45 idle minutes lands exactly on
+  // the happy floor (70), so the face turns on the minute after — and an hour
+  // alone is unmistakably not a happy pet.
+  assert.equal(later, 70, 'the gentle stage should hand over right at the happy floor');
+  assert.ok(idleFor(TUNING.missedAfterMin + 16).mood < 70, 'still happy a minute later');
+  assert.ok(idleFor(60).mood < 50, `an hour alone reads as ${idleFor(60).mood}`);
+});
+
+test('a pet that has never done anything is not lonely, it is new', () => {
+  const s = fresh();
+  s.lastMeaningfulAt = 0;
   s.mood = 60;
-  s.energy = 100; // not sleepy — isolate loneliness
-  tick(s, T0 + 40 * 60_000, ctx(T0 + 40 * 60_000));
-  assert.ok(s.mood < 60, 'mood drifted down');
+  tick(s, T0 + 3 * 60 * 60_000, ctx(T0 + 3 * 60 * 60_000));
+  assert.equal(s.mood, 60);
+});
+
+test('one long tick charges the same as many short ones', () => {
+  // The lid was closed for two hours: the tick that lands on wake covers both
+  // stages at once, and must not bill the whole gap at either single rate.
+  const slept = idleFor(1).mood; // …a shared prologue, so both start alike
+  const s = fresh();
+  s.lastMeaningfulAt = T0; s.lastEventAt = T0; s.mood = 100; s.energy = 100;
+  tick(s, T0 + 90 * 60_000, ctx(T0 + 90 * 60_000, true, () => 0.99));
+  assert.ok(Math.abs(s.mood - idleFor(90).mood) < 0.01,
+    `one 90-minute tick gave ${s.mood}, ninety 1-minute ticks gave ${idleFor(90).mood}`);
+  assert.ok(slept === 100);
+});
+
+test('a long tick containing a meaningful event only charges for the quiet part', () => {
+  // Woken at T+90 but the pet was busy until T+80: it has been alone for ten
+  // minutes, which is not lonely at all.
+  const s = fresh();
+  s.lastEventAt = T0; s.mood = 100; s.energy = 100;
+  s.lastMeaningfulAt = T0 + 80 * 60_000;
+  tick(s, T0 + 90 * 60_000, ctx(T0 + 90 * 60_000));
+  assert.equal(s.mood, 100, 'charged for minutes it was not actually alone');
+});
+
+test('mood never falls below zero, however long it is left', () => {
+  const s = fresh();
+  s.lastMeaningfulAt = T0; s.lastEventAt = T0; s.mood = 100; s.energy = 100;
+  tick(s, T0 + 7 * 24 * 60 * 60_000, ctx(T0 + 7 * 24 * 60 * 60_000));
+  assert.equal(s.mood, 0);
 });
 
 test('sleep requires low energy AND quiet — never doze mid-work', () => {

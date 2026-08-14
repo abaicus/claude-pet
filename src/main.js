@@ -2,11 +2,13 @@
 // Electron main: wires the (headless) brain to windows, tray, shortcuts.
 // All game rules live in the brain; this file is plumbing and chrome.
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, screen, globalShortcut, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, screen, globalShortcut, ipcMain, clipboard, shell } = require('electron');
 const path = require('path');
 const { Brain } = require('./brain/brain');
 const { IPC, petDir, claudeSettingsPath } = require('./shared/constants');
 const { trayIconPngs } = require('./chrome/tray-icon');
+const physics = require('./chrome/physics');
+const focus = require('./chrome/focus');
 const PetArt = require('./body/art'); // geometry only — it draws nothing here
 
 const PET_W = 320;
@@ -27,8 +29,14 @@ let brain;
 let petWin = null;
 let settingsWin = null;
 let onboardWin = null;
+let receiptWin = null;
+let cardWin = null;
 let tray = null;
 let cursorTimer = null;
+// True between "the pet window exists" and "the intro is over" on a fresh
+// install: the window is built (so it sizes, positions and listens like any
+// other launch) but never shown until onboarding says so.
+let waitingForIntro = false;
 let wander = null; // {phase, home:{x,y}, target, startedAt, timer}
 
 const single = app.requestSingleInstanceLock();
@@ -50,8 +58,15 @@ function createPetWindow() {
   const x = pos ? pos.x : wa.x + wa.width - PET_W - 40;
   const y = pos ? savedFeet - (h - box.foot) : wa.y + wa.height - h - 20;
 
+  // On a fresh install the first thing you meet is the intro, not a creature
+  // standing behind it — so the window is built now (it has to be: it sizes
+  // itself, clamps to the display and takes the state feed like any launch)
+  // but stays off-screen until onboarding is done.
+  waitingForIntro = !brain.prefs.onboarded;
+
   petWin = new BrowserWindow({
     x, y, width: PET_W, height: h,
+    show: !waitingForIntro,
     frame: false, transparent: true, resizable: false,
     alwaysOnTop: true, hasShadow: false, skipTaskbar: true,
     fullscreenable: false, minimizable: false, maximizable: false,
@@ -144,9 +159,61 @@ function createOnboardingWindow() {
   });
 }
 
+// The curtain. `completeOnboarding` is what ends the intro — by the button, by
+// skip, or by closing the window — and it reaches here as a state with
+// `onboarded` set. Show the pet BEFORE the state goes out: that same state
+// carries the hatch party and the hello bubble, and a hidden window is not
+// rendering to play them.
+function revealPetAfterIntro(state) {
+  if (!waitingForIntro || !state.onboarded) return;
+  waitingForIntro = false;
+  if (petWin && !petWin.isDestroyed()) petWin.showInactive();
+  rebuildTray(); // the menu said "Show pet" while it was backstage
+}
+
+// The day, on paper. Narrow and tall like a till roll, and frameless so the
+// slip itself is the whole window — the page draws its own torn edges.
+function createReceiptWindow() {
+  abortWander();
+  if (receiptWin) { receiptWin.show(); receiptWin.focus(); return; }
+  receiptWin = new BrowserWindow({
+    width: 330, height: 680, minWidth: 300, maxWidth: 420, minHeight: 320,
+    frame: false, transparent: true, hasShadow: false, resizable: true,
+    title: "Today's receipt", fullscreenable: false, maximizable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'body', 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  receiptWin.loadFile(path.join(__dirname, 'receipt', 'receipt.html'));
+  receiptWin.on('closed', () => { receiptWin = null; });
+}
+
+// The pet card: a portrait and the lifetime figures, sized to be posted.
+// Shown rather than rendered offscreen — you should see the thing before you
+// save it, and the PNG comes from the canvas, not from this window.
+function createCardWindow() {
+  abortWander();
+  if (cardWin) { cardWin.show(); cardWin.focus(); return; }
+  cardWin = new BrowserWindow({
+    width: 460, height: 330, resizable: false,
+    frame: false, transparent: true, hasShadow: false,
+    title: 'Pet card', fullscreenable: false, maximizable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'body', 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  cardWin.loadFile(path.join(__dirname, 'card', 'card.html'));
+  cardWin.on('closed', () => { cardWin = null; });
+}
+
 function broadcast(state) {
   fitPetWindow(state);
-  for (const win of [petWin, settingsWin, onboardWin]) {
+  revealPetAfterIntro(state);
+  for (const win of [petWin, settingsWin, onboardWin, receiptWin, cardWin]) {
     if (win && !win.isDestroyed()) win.webContents.send(IPC.state, state);
   }
 }
@@ -197,6 +264,7 @@ function key(id) {
 function togglePetVisible() {
   if (!petWin || petWin.isDestroyed()) return;
   abortWander();
+  waitingForIntro = false; // asking for the pet by hand outranks the curtain
   if (petWin.isVisible()) petWin.hide(); else petWin.showInactive();
   rebuildTray();
 }
@@ -213,6 +281,9 @@ function buildMenu() {
   return Menu.buildFromTemplate([
     { label: 'Settings…', click: () => createSettingsWindow(), ...key('settings') },
     { label: 'Intro…', click: () => createOnboardingWindow() },
+    // The day's numbers, right in the menu — and the whole till roll behind it.
+    { label: `Today · ${brain.receiptTeaser()}…`, click: () => createReceiptWindow() },
+    { label: 'Pet card…', click: () => createCardWindow() },
     { type: 'separator' },
     { label: 'Give a treat', click: () => brain.command({ type: 'treat' }), ...key('treat') },
     { label: hidden ? 'Show pet' : 'Hide pet', click: () => togglePetVisible(), ...key('visible') },
@@ -265,7 +336,8 @@ function startCursorFeed() {
       petWin.webContents.send(IPC.cursor, {
         dx: p.x - cx, dy: p.y - cy,
         walking: wander ? wander.walking : false,
-        facing: wander ? wander.facing : 0
+        facing: wander ? wander.facing : 0,
+        falling: !!fall
       });
     } catch (_) { /* screen may be asleep */ }
   }, 100);
@@ -315,6 +387,69 @@ function maybeStartWander() {
   }, stepMs);
 }
 
+// ------------------------------------------------------------------ gravity
+// Let go of the pet in mid-air and it falls. The WINDOW moves, so it drops in
+// front of every other window on the desktop, bounces off the floor and the
+// screen edges, and squashes on each landing. Throwing it sideways works
+// because the drag is sampled as it happens — the speed your hand had is the
+// speed it leaves with.
+//
+// Off by preference (`gravity`), because the other half of this app's contract
+// is "drag it anywhere; the position sticks", and somebody who parks their pet
+// beside their editor is not going to enjoy watching it fall off.
+const REST_GAP = 20;      // where it comes to rest above the work area, as on first launch
+const STEP_MS = 16;
+
+let fall = null;
+let dragSamples = [];     // recent {t, dx, dy} — the throw is read out of these
+
+// The floor, the walls and the ceiling, for whichever display the pet is on.
+function fallBounds(b) {
+  const disp = screen.getDisplayMatching(b).workArea;
+  return {
+    floor: disp.y + disp.height - b.height - REST_GAP,
+    ceiling: disp.y,
+    left: disp.x,
+    right: disp.x + disp.width - b.width
+  };
+}
+
+function startFall() {
+  if (!petWin || petWin.isDestroyed()) return;
+  const samples = dragSamples;
+  dragSamples = [];
+  if (!brain.prefs.gravity) { savePosition(); return; }
+
+  const b = petWin.getBounds();
+  const v = physics.throwVelocity(samples, Date.now());
+  // Carried and set down: it stays exactly there, at any height. Only a throw
+  // gets gravity — the raw velocity decides, upward flicks included.
+  if (!physics.shouldFall(v)) { savePosition(); return; }
+
+  if (fall) clearInterval(fall.timer);
+  fall = { x: b.x, y: b.y, vx: v.vx, vy: v.vy, timer: setInterval(stepFall, STEP_MS) };
+}
+
+function stepFall() {
+  if (!petWin || petWin.isDestroyed() || !fall) return abortFall();
+  const b = petWin.getBounds();
+  const next = physics.step(fall, fallBounds(b), STEP_MS / 1000);
+  Object.assign(fall, { x: next.x, y: next.y, vx: next.vx, vy: next.vy });
+  petWin.setPosition(Math.round(next.x), Math.round(next.y));
+  // The squash belongs to the sprite, and only the window knows it landed.
+  if (next.impact > 0) {
+    petWin.webContents.send(IPC.land, { power: Math.min(1, next.impact / 1600) });
+  }
+  if (next.done) abortFall({ save: true });
+}
+
+function abortFall({ save = false } = {}) {
+  if (!fall) return;
+  clearInterval(fall.timer);
+  fall = null;
+  if (save) savePosition();
+}
+
 function abortWander() {
   if (!wander) return;
   clearInterval(wander.timer);
@@ -331,19 +466,68 @@ function wireIpc() {
   ipcMain.on(IPC.moveWindow, (_e, { dx, dy, done }) => {
     if (!petWin || petWin.isDestroyed()) return;
     abortWander(); // a grab aborts the stroll
+    abortFall();   // …and catches it mid-air
     if (typeof dx === 'number' && typeof dy === 'number') {
       const b = petWin.getBounds();
       petWin.setPosition(b.x + Math.round(dx), b.y + Math.round(dy));
+      // Sampled for the throw. Trimmed here rather than at release, so a long
+      // slow drag cannot grow an unbounded array.
+      dragSamples.push({ t: Date.now(), dx, dy });
+      if (dragSamples.length > 40) dragSamples.shift();
     }
-    if (done) savePosition();
+    if (done) startFall(); // …which saves the position wherever it comes to rest
   });
 
   ipcMain.on(IPC.closeSettings, () => {
     if (settingsWin && !settingsWin.isDestroyed()) settingsWin.close();
   });
 
+  ipcMain.handle('pet:get-receipt', () => brain.receipt());
+
+  // The card arrives already drawn, as a PNG data URL from its own canvas —
+  // main only has to decide where it lands and then show the user.
+  ipcMain.handle('pet:save-card', async (_e, { dataUrl, name } = {}) => {
+    try {
+      const img = nativeImage.createFromDataURL(String(dataUrl || ''));
+      if (img.isEmpty()) return { ok: false, reason: 'empty image' };
+      const safe = String(name || 'gogu-card.png').replace(/[^a-zA-Z0-9._-]/g, '');
+      const file = path.join(app.getPath('desktop'), safe || 'gogu-card.png');
+      require('fs').writeFileSync(file, img.toPNG());
+      shell.showItemInFolder(file);
+      return { ok: true, file };
+    } catch (err) {
+      return { ok: false, reason: err.message };
+    }
+  });
+
+  ipcMain.on('pet:copy-card', (_e, { dataUrl } = {}) => {
+    const img = nativeImage.createFromDataURL(String(dataUrl || ''));
+    if (!img.isEmpty()) clipboard.writeImage(img);
+  });
+
+  ipcMain.on('pet:close-card', () => {
+    if (cardWin && !cardWin.isDestroyed()) cardWin.close();
+  });
+
+  ipcMain.on('pet:copy-receipt', (_e, { text } = {}) => {
+    if (text) clipboard.writeText(String(text));
+  });
+
+  ipcMain.on('pet:close-receipt', () => {
+    if (receiptWin && !receiptWin.isDestroyed()) receiptWin.close();
+  });
+
   ipcMain.on(IPC.closeOnboarding, () => {
     if (onboardWin && !onboardWin.isDestroyed()) onboardWin.close();
+  });
+
+  // Click a session line and the terminal it belongs to comes forward. The
+  // pet only speaks when it FAILS: on success the terminal arriving in front
+  // of you is the feedback, and a bubble on top of that is noise.
+  ipcMain.on(IPC.focusSession, async (_e, { cwd } = {}) => {
+    abortWander();
+    const res = await focus.focusTerminalFor(cwd);
+    if (!res.ok) brain.command({ type: 'focusFailed', reason: res.reason });
   });
 
   ipcMain.on(IPC.contextMenu, () => {
@@ -371,6 +555,11 @@ app.whenReady().then(() => {
   if (!brain.prefs.onboarded) createOnboardingWindow();
 
   setInterval(maybeStartWander, 45 * 1000);
+  // The tray's menu is built once and cached by the OS, and one of its items
+  // now states the day's numbers — so it has to be rebuilt occasionally or it
+  // spends the afternoon claiming nothing has happened. (The right-click menu
+  // on the pet is built fresh every time it pops, so it never goes stale.)
+  setInterval(rebuildTray, 60 * 1000);
 
   // Dev/debug: screenshot the pet window (GOGU_SHOT=/path/out.png)
   if (process.env.GOGU_SHOT) {
@@ -443,5 +632,6 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   if (cursorTimer) clearInterval(cursorTimer);
   abortWander();
+  abortFall();
   if (brain) brain.stop(); // flush state — quit + relaunch loses nothing
 });

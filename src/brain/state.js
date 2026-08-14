@@ -21,6 +21,9 @@ function defaultState(now = 0) {
     sleeping: false,
     todos: null,                 // last TodoWrite seen: {n, d, p, at}
     pm: null,                    // last permission_mode seen (changes are news)
+    day: null,                   // today's till roll (see ledger.js); rolled at local midnight
+    redRuns: 0,                  // consecutive red test runs; three makes it ill
+    sick: false,                 // …and only a green run cures it
     combo: { count: 0, lastAt: 0 },
     petXpAt: 0,                  // last time petting granted xp (rate limit)
     treatAt: 0                   // last treat (cooldown)
@@ -56,6 +59,7 @@ function defaultPrefs() {
     bubbles: true,
     statsLine: true,
     glow: true,
+    gravity: true,        // let go of it in mid-air and it falls. off = park it anywhere
     scale: 1.5,           // the pixel sprite wants room; 1 is the floor
     soundOn: false,        // off by default — deliberate
     volume: 0.7,

@@ -103,6 +103,11 @@ const POOLS = {
   treat: ['COOKIE!! 🍪', 'nom nom nom!!', 'for me?! ♥'],
   treatFull: ['not hungry rn', 'maybe later~', '*polite decline*', 'so full though'],
   accessory: ['how do I look?', 'fancy!! ✨', 'my new look~'],
+  // Three red runs in a row. Not a scolding — the pet is worried, not cross.
+  sick: ['I don\'t feel so good…', '*sniffle* the suite…', 'ough. red again…'],
+  healed: ['ALL BETTER!! ✓', '*rips off plaster*', 'green!! I\'m cured ♥'],
+  stillSick: ['*coughs politely*', 'still poorly…', 'the suite hurts'],
+  focusFailed: ['can\'t find that window…', 'it\'s hiding from me', 'no terminal by that name?'],
   reset: ['…starting over. hi, I\'m new'],
   hooksBroken: ['I can\'t hear Claude — settings file confused me']
 };

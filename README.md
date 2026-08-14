@@ -77,6 +77,16 @@ level from 1 up unlocks something to wear — 27 accessories, one per level.
 The ladder is append-only: the first eleven rungs are frozen, because
 re-spacing them would silently demote every pet already standing on one.
 
+Growing a new **silhouette** — seven times in a lifetime — gets a ceremony
+rather than a bigger party: it crouches, sparks are pulled in from all sides,
+it bleaches to a solid white shape, and what lands is the new creature. The
+shape changes while the white is up, so you never see one form become another.
+
+It can also get **ill**. Three red test runs with nothing green in between and
+it puts a plaster on, stops wandering, and keeps it on — overnight, across
+restarts — until a run comes back green. Curing it pays better than the red
+run cost, so a bad afternoon ends better than even.
+
 ## Make it yours
 
 <table>
@@ -145,10 +155,22 @@ can't read is left out rather than faked.
 
 - **Left-click** to pet it (~45% of the time it answers with a real fact about
   your session). **Double-click** for a cookie.
-- **Drag** it anywhere; the position sticks. The window is only ever as tall as
-  the creature plus its speech room.
+- **Click a session line** and the terminal running that session comes to the
+  front — iTerm2 and Terminal.app, matched on the session's own working
+  directory. The line that says which terminal needs you is also the way there.
+- **Drag** it anywhere and the position sticks — set it down gently and it
+  stays exactly there, at any height, including the top of the screen.
+- **Throw** it and physics takes over: let go while your hand is still moving
+  and it falls, bounces off the floor, the walls and the ceiling, and squashes
+  on landing. Speed is what decides, not height, so placing is never a drop.
+  Turn `gravity` off in settings or the intro to disable throwing entirely.
 - **Right-click** or use the **tray icon** for settings, a treat, hide/show,
-  sounds, click-through, hooks and quit.
+  sounds, click-through, hooks, today's receipt, the pet card and quit.
+- **Today's receipt** — the menu shows the day's line (`3 commits · 41 edits ·
+  774 xp`) and opens the whole till roll: every prompt, edit, feast, commit and
+  test run, priced in xp, subtotalled and balanced. Copyable as text.
+- **Pet card** — a portrait and the lifetime figures as a PNG, drawn on a
+  canvas rather than screenshotted, saved to the desktop or copied.
 - **Global shortcuts** — real ones, registered with the OS:
 
   | | | |
@@ -219,6 +241,14 @@ npx electron scripts/shoot-mockups.js     # render art mockups to mockups/*.png
 Releases (GitHub release + Homebrew cask, from one workflow run) are described
 in [docs/releasing.md](docs/releasing.md).
 
+**Showing it to a room.** Settings → DEBUG → *play the reel* runs a scripted
+day at speed: it eats, sulks, falls ill, recovers, ships, and evolves three
+times, in about forty seconds. Every beat goes through the real reducer, so
+what the room sees is the app reacting rather than a second animation system
+posing for the camera. The reel *borrows* the pet — whatever it was before is
+put back at the end — so it can be run again before the next meeting, and no
+real xp is earned or lost.
+
 Sandboxing for development — never touches your real config:
 
 ```sh
@@ -251,11 +281,16 @@ src/
   brain/      ALL state & game logic — no Electron imports, headless-testable
               tailer (byte-offset cursor) · reducer (event → state) ·
               bash-parser (command semantics) · sessions (transcript
-              telemetry) · quips · persistence
+              telemetry) · quips · persistence · ledger (the day, counted) ·
+              receipt (the day, printed) · demo (the reel)
   body/       dumb renderer: render(state) — canvas art, animations,
               bubble, stats line, sounds (all generated in code)
+  chrome/     window-side logic worth testing: physics (the fall),
+              focus (finding the terminal a session is running in)
   settings/   remote control only; the brain enforces every rule
   onboarding/ the first-launch intro — same, plus a live portrait of the pet
+  receipt/    a printer: it asks the brain for today's lines and shows them
+  card/       the shareable PNG, drawn on a canvas with the real PetArt
   shared/     constants, tuning, IPC channel names
 ```
 

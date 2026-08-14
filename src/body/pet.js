@@ -33,13 +33,26 @@ let eyeTarget = 0, eyeNow = 0;
 let cursor = { dx: 9999, dy: 0, walking: false, facing: 0 };
 let glanceUntil = 0, glanceDir = 0, nextGlanceAt = 0;
 let facing = 1;             // 1 = right, -1 = left
+let morphFrom = null;       // the silhouette an evolution is growing out of
 
 const ANIM_DUR = {
   eat: 700, party: 1600, partyBig: 2800, sulk: 1800, wake: 900,
   attention: 1600, hearts: 1100, flinch: 500, wave: 1000, sleep: 1200,
   nibble: 460, feast: 1300, sniff: 950, think: 1500, nod: 620,
-  spin: 720, shiver: 700
+  spin: 720, shiver: 700, evolve: 2800
 };
+
+// ------------------------------------------------------------------ ceremony
+// Growing a new silhouette is the rarest thing this pet does — seven times in
+// a lifetime — and it used to be a slightly bigger confetti party. These are
+// the beats it gets instead, as fractions of the evolve animation:
+//   0 …CHARGE  crouches, shivering harder, sparks pulled in from all sides
+//   FLASH_IN   bleached to a white silhouette
+//   SWAP       …and under the white, the shape becomes the new one
+//   FLASH_OUT  colour floods back, confetti, a ring goes out
+//   SETTLE     two proud hops
+const EV = { FLASH_IN: 0.36, SWAP: 0.45, FLASH_OUT: 0.56, SETTLE: 0.74 };
+const WHITE = '#fffdf5';    // the paper cream, not a clinical white
 
 // Idle fidgets. The renderer owns these outright — the brain has no opinion
 // about them, exactly as it has none about blinking. They are how the puppet
@@ -47,7 +60,12 @@ const ANIM_DUR = {
 // every BRAIN-emitted animation name exists on this side.
 const IDLE_DUR = { look: 1200, stretch: 1000, bounce: 760, wiggle: 900 };
 const IDLE_NAMES = Object.keys(IDLE_DUR);
-const durationOf = (name) => ANIM_DUR[name] || IDLE_DUR[name] || 800;
+
+// Renderer-owned too, but driven by the WINDOW rather than by boredom: the
+// only thing that knows the pet just hit the floor is the thing moving it.
+// Kept out of IDLE_DUR so an idle pet never randomly plays a landing.
+const WINDOW_DUR = { land: 420 };
+const durationOf = (name) => ANIM_DUR[name] || IDLE_DUR[name] || WINDOW_DUR[name] || 800;
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
@@ -62,6 +80,10 @@ window.addEventListener('resize', resize);
 
 // ------------------------------------------------------------------ state in
 function consume(s) {
+  // The form has ALREADY changed by the time the evolve animation arrives —
+  // they ride in on the same state object — so the shape to dissolve out of is
+  // whatever was on screen a moment ago. Captured here, before that is lost.
+  if (state && state.form !== s.form) morphFrom = state.form;
   state = s;
 
   for (const f of s.fx || []) {
@@ -109,7 +131,7 @@ function renderSessionLines(lines) {
     ? lines.slice(0, max - 1).concat([{ kind: 'more', text: `+${lines.length - max + 1} more` }])
     : lines;
   shownLines = rows.length;
-  const sig = rows.map(r => r.kind + '|' + r.text).join('\n');
+  const sig = rows.map(r => r.kind + '|' + r.text + '|' + (r.cwd || '')).join('\n');
   if (sig === lineSig) return;              // state arrives constantly; the DOM shouldn't churn
   lineSig = sig;
   stripEl.textContent = '';
@@ -117,6 +139,18 @@ function renderSessionLines(lines) {
     const el = document.createElement('div');
     el.className = 'pill line ' + r.kind;
     el.textContent = r.text;
+    // The line is the answer to "which terminal?", so clicking it goes there.
+    // Only a line that knows its directory offers to: the "+2 more" row and
+    // any session whose cwd never arrived stay inert rather than lying.
+    if (r.cwd) {
+      el.classList.add('goto');
+      el.title = r.cwd;
+      el.addEventListener('mousedown', (e) => e.stopPropagation()); // not a drag on the pet
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        petAPI.focusSession(r.cwd);
+      });
+    }
     stripEl.appendChild(el);
   }
 }
@@ -124,9 +158,10 @@ function renderSessionLines(lines) {
 petAPI.onState(consume);
 petAPI.getState().then(consume);
 petAPI.onCursor((c) => { cursor = c; });
+petAPI.onLand(({ power }) => startAnim('land', false, { power }));
 
 // ------------------------------------------------------------------ anims
-function startAnim(name, big) {
+function startAnim(name, big, opts = {}) {
   const t = performance.now();
   if (name === 'party') {
     anim = { name, big, start: t, dur: big ? ANIM_DUR.partyBig : ANIM_DUR.party };
@@ -145,6 +180,15 @@ function startAnim(name, big) {
   } else if (name === 'spin') {
     anim = { name, start: t, dur: ANIM_DUR.spin };
     spawnConfetti(8, false);
+  } else if (name === 'land') {
+    // A hard landing must be allowed to interrupt a fidget; a fidget must not
+    // be allowed to interrupt the ceremony.
+    if (anim && anim.name === 'evolve') return;
+    anim = { name, start: t, dur: WINDOW_DUR.land, power: opts.power || 0.5 };
+  } else if (name === 'evolve') {
+    anim = { name, big: true, start: t, dur: ANIM_DUR.evolve, from: morphFrom };
+    morphFrom = null;
+    spawnSparks(16, ANIM_DUR.evolve * EV.FLASH_IN / 1000);
   } else {
     anim = { name, big, start: t, dur: durationOf(name) };
   }
@@ -256,6 +300,35 @@ function spawnDots(n) {
     });
   }
 }
+// Sparks pulled INTO the pet while it charges — the one particle here that
+// travels inward. Each is aimed at the middle of the body and given exactly
+// enough speed to arrive as the flash goes off, so the burst looks caused.
+function spawnSparks(n, seconds) {
+  const g = (state && PetArt.GEOM[state.form]) || PetArt.GEOM.hatchling;
+  const midY = -g.h * 0.5;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + Math.random() * 0.3;
+    const r = 60 + Math.random() * 34;
+    const x = Math.cos(a) * r, y = midY + Math.sin(a) * r * 0.75;
+    const delay = Math.random() * seconds * 0.45;
+    const travel = Math.max(0.2, seconds - delay);
+    particles.push({
+      type: 'spark',
+      x, y,
+      vx: -x / travel, vy: (midY - y) / travel,
+      color: i % 3 === 0 ? '#fff3c4' : '#ffffff',
+      age: -delay, life: travel
+    });
+  }
+}
+
+// The shockwave. Not a circle: a square ring on the art grid, because a smooth
+// expanding circle next to a pixel sprite reads as a different program.
+function spawnRing() {
+  const g = (state && PetArt.GEOM[state.form]) || PetArt.GEOM.hatchling;
+  particles.push({ type: 'ring', x: 0, y: -g.h * 0.5, vx: 0, vy: 0, age: 0, life: 0.65 });
+}
+
 function spawnZzz() {
   particles.push({
     type: 'zzz',
@@ -266,6 +339,7 @@ function spawnZzz() {
 }
 
 let lastZzz = 0;
+let ringDone = false;       // the flash fires once per ceremony, not once per frame
 
 // motion computed from active anim + passive state
 function computeMotion(t) {
@@ -277,6 +351,9 @@ function computeMotion(t) {
     m.hop = Math.abs(Math.sin(t / 110)) * 3;
     m.tilt = Math.sin(t / 110) * 0.05;
   }
+  // Airborne: drawn out thin, the way a falling thing is. The landing
+  // animation assigns over this, so the squash still wins on impact.
+  if (cursor.falling) m.squash = -0.3;
   if (!anim) return m;
 
   const el = (t - anim.start) / anim.dur; // 0..1
@@ -364,6 +441,34 @@ function computeMotion(t) {
       m.tilt = (Math.floor(el * 26) % 2 ? 1 : -1) * 0.18;
       break;
     }
+    case 'land': {
+      // Squash on impact, overshoot into a stretch, settle — the whole of
+      // squash-and-stretch in one damped wobble, scaled by how hard it hit.
+      const p = anim.power || 0.5;
+      m.squash = 0.36 * p * Math.cos(el * Math.PI * 2.5) * Math.pow(1 - el, 1.5);
+      break;
+    }
+    case 'evolve': {
+      if (el < EV.FLASH_IN) {
+        // Charging: sinks into a crouch, shaking harder the closer it gets.
+        const k = el / EV.FLASH_IN;
+        m.squash = 0.10 + k * 0.16;
+        m.tilt = (Math.floor(el * (14 + k * 60)) % 2 ? 1 : -1) * 0.10 * k;
+      } else if (el < EV.FLASH_OUT) {
+        // The flash: everything the crouch was holding, released upward.
+        m.squash = -0.75;
+        m.hop = 10;
+      } else if (el < EV.SETTLE) {
+        // Landing, on the new body.
+        const k = (el - EV.FLASH_OUT) / (EV.SETTLE - EV.FLASH_OUT);
+        m.squash = -0.5 * (1 - k) + 0.12 * Math.sin(k * Math.PI);
+        m.hop = 8 * (1 - k);
+      } else {
+        const k = (el - EV.SETTLE) / (1 - EV.SETTLE);
+        m.hop = Math.abs(Math.sin(k * Math.PI * 2)) * 12;   // two proud hops
+      }
+      break;
+    }
     // ---- idle fidgets (renderer-owned; see IDLE_DUR)
     case 'look': {                              // a slow look to one side
       const d = anim.dir || 1;
@@ -426,6 +531,18 @@ function frame(t) {
   maybeIdle(t);
   const motion = computeMotion(t);
 
+  // Where the ceremony is up to, if one is running. Read after computeMotion,
+  // which is what retires a finished animation.
+  const cer = anim && anim.name === 'evolve'
+    ? { el: (t - anim.start) / anim.dur, from: anim.from }
+    : null;
+  if (cer && cer.el >= EV.FLASH_IN && !ringDone) {
+    ringDone = true;
+    spawnRing();
+    spawnConfetti(44, true);
+  }
+  if (!cer) ringDone = false;
+
   // sleeping Zzz
   if (s.sleeping && t - lastZzz > 1400) { lastZzz = t; spawnZzz(); }
 
@@ -439,11 +556,17 @@ function frame(t) {
   // scale about the feet; facing flips X, spinX narrows it mid-spin
   ctx2d.scale(scale * facing * (motion.spinX || 1), scale);
 
+  // Under the white, the shape changes. Before the flash it is still the old
+  // creature; after it, the new one — and the audience never sees either
+  // silhouette turn into the other, which is the whole trick.
+  const bleached = cer && cer.el >= EV.FLASH_IN && cer.el < EV.FLASH_OUT;
   PetArt.drawPet(ctx2d, {
-    form: s.form,
+    form: (cer && cer.from && cer.el < EV.SWAP) ? cer.from : s.form,
+    eclipse: bleached ? WHITE : undefined,
     ramp: (s.paletteRamps && s.paletteRamps[s.palette]) || undefined,
-    accessory: s.accessory,
+    accessory: bleached ? null : s.accessory,
     mood: s.sleeping ? 'neutral' : s.moodBand,
+    sick: s.sick,
     t,
     eyeTrack: eyeNow * facing,          // compensate mirror so eyes still follow cursor
     blink: blinkClosure,
@@ -489,6 +612,15 @@ function drawOverlays(t, motion, scale, cx, feetY, dt) {
       ctx2d.fillRect(snap(p.x), snap(p.y), G, G);
       ctx2d.fillStyle = '#fffef2';
       ctx2d.fillRect(snap(p.x) + G / 4, snap(p.y) + G / 4, G / 2, G / 2);
+    } else if (p.type === 'spark') {            // pulled in, brightening as it goes
+      ctx2d.fillStyle = p.color;
+      const s2 = G * (0.5 + 0.5 * (p.age / p.life));
+      ctx2d.fillRect(snap(p.x), snap(p.y), s2, s2);
+    } else if (p.type === 'ring') {             // the shockwave, on the grid
+      const r = Math.round((6 + p.age * 150) / G) * G;
+      ctx2d.strokeStyle = '#fffdf5';
+      ctx2d.lineWidth = G;
+      ctx2d.strokeRect(snap(p.x) - r, snap(p.y) - r, r * 2, r * 2);
     } else if (p.type === 'heart') {
       drawPixelHeart(snap(p.x), snap(p.y), G, '#ff6f91');
     } else if (p.type === 'zzz') {

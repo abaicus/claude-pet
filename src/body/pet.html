@@ -108,6 +108,15 @@
   .pill.line.done { background: #fffef2; color: #2b2b2b; box-shadow: 2px 2px 0 #2b2b2b; }
   .pill.line.working { opacity: 0.72; }
   .pill.line.more { opacity: 0.6; letter-spacing: 0.5px; }
+  /* A line that can take you to its terminal says so under the cursor: it
+     presses in like a button, because that is what it now is. */
+  /* The zone itself is click-through so the pet underneath stays draggable;
+     these lines are the one thing in it that has to catch a click, and only
+     while they are actually up. */
+  #stats-zone.show .pill.line.goto { pointer-events: auto; }
+  .pill.line.goto { cursor: pointer; }
+  .pill.line.goto:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 #2b2b2b; opacity: 1; }
+  .pill.line.goto:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0 #2b2b2b; }
 </style>
 </head>
 <body>

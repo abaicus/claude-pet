@@ -213,7 +213,12 @@ test('debug: set level moves xp to ladder, fires evolve fx on the way up', () =>
   assert.equal(brain.state.level, 6);
   assert.equal(brain.state.xp, 1000); // XP_LADDER[6]
   assert.equal(brain.getRenderState().form, 'senior');
-  assert.ok(brain.fxQueue.some(f => f.name === 'party' && f.big), 'evolution party fired');
+  // A new silhouette gets the ceremony; a plain level-up gets the party.
+  assert.ok(brain.fxQueue.some(f => f.name === 'evolve' && f.big), 'evolution ceremony fired');
+  brain.fxQueue.length = 0;
+  brain.command({ type: 'debugSetLevel', level: 7 }); // senior → senior: no new form
+  assert.ok(brain.fxQueue.some(f => f.name === 'party'), 'a level-up still parties');
+  assert.ok(!brain.fxQueue.some(f => f.name === 'evolve'), 'a mere level-up staged a whole ceremony');
   assert.equal(brain.command({ type: 'debugSetLevel', level: 26 }).ok, false);
   assert.equal(brain.command({ type: 'debugSetLevel', level: -1 }).ok, false);
 });
