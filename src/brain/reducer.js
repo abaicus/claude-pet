@@ -570,7 +570,7 @@ function reduce(state, ev, ctx) {
       addEnergy(state, TUNING.stopEnergy / 2);
       sound(fx, ctx, 'done');
       // No quip here: the session registry announces this one by name
-      // ("claudy-pet · done ✓ your turn"), and which session finished is the
+      // ("gogu · done ✓ your turn"), and which session finished is the
       // only part of "Claude stopped" a human can't already see.
       break;
     }

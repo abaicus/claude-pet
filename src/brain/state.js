@@ -50,7 +50,7 @@ function migrate(state, now = 0) {
 function defaultPrefs() {
   return {
     schemaVersion: 1,
-    name: 'Pixel',
+    name: 'Gogu',
     palette: 'mint',
     accessory: null,
     bubbles: true,

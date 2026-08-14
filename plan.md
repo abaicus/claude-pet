@@ -1,4 +1,4 @@
-# claude-pet — Build Plan (from zero)
+# gogu — Build Plan (from zero)
 
 A desktop tamagotchi that floats above all windows and feeds on Claude Code
 activity. It is a critter, not an app: no dock icon, no window chrome. It
@@ -34,7 +34,7 @@ build tangled these; every art rework was expensive because of it]**
 ### 1. Capture (outside the app)
 - Claude Code hooks: SessionStart, SessionEnd/Stop, UserPromptSubmit,
   PreToolUse, PostToolUse, Notification, SubagentStop, PreCompact.
-- Each hook appends one JSON line to `~/.claude-pet/events.jsonl`.
+- Each hook appends one JSON line to `~/.gogu/events.jsonl`.
   File transport only — no server, no ports, no sockets. **[lesson]**
 - Payloads stay tiny (a few hundred bytes): event type, session id, project
   path, timestamp, tool name, command text / output tail. File contents never
@@ -258,7 +258,7 @@ across ~6 common runner formats for pass/fail counts.
 ## Appendix B — Suggested repo layout
 
 ```
-claude-pet/
+gogu/
   src/
     capture/    hook script (standalone, zero deps), installer/uninstaller
     brain/      state, reducer (event → state), sessions/, persistence,

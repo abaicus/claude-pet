@@ -9,8 +9,8 @@
 // take its own screenshots. If a number in a screenshot is wrong, the app is
 // wrong — which is the only way a README screenshot stays honest.
 //
-// The sandbox is CLAUDE_PET_DIR + CLAUDE_PET_SETTINGS, so this never reads or
-// writes your real pet or your real ~/.claude/settings.json.
+// The sandbox is GOGU_DIR + GOGU_SETTINGS, so this never reads or writes your
+// real pet or your real ~/.claude/settings.json.
 
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -26,7 +26,7 @@ const MINUTE = 60 * 1000;
 // The board from the README's opening example, as data. Four sessions, one in
 // each state, sorted by who is blocked on whom — which is the whole pitch.
 const SESSIONS = [
-  { sid: 'a1', project: 'claudy-pet', status: 'perm', ago: 12 * 1000, ctx: 0.34,
+  { sid: 'a1', project: 'gogu', status: 'perm', ago: 12 * 1000, ctx: 0.34,
     msg: 'Claude needs your permission to use Bash' },
   { sid: 'b2', project: 'api-server', status: 'idle', ago: 4 * MINUTE, ctx: 0.71,
     msg: 'Claude is waiting for your input' },
@@ -44,7 +44,7 @@ function seed(dir) {
   // rather than the level-0 egg a fresh install shows, because the README is
   // selling what the thing becomes.
   fs.writeFileSync(path.join(dir, 'prefs.json'), JSON.stringify({
-    name: 'Pixel', palette: 'mint', accessory: 'headphones',
+    name: 'Gogu', palette: 'mint', accessory: 'headphones',
     bubbles: true, statsLine: true, glow: true, scale: 1.5,
     soundOn: false, volume: 0.7, clickThrough: false, onboarded: true,
     position: { x: 120, y: 120 }
@@ -122,8 +122,8 @@ function shootOnce(label, env, timeoutMs) {
     const child = spawn(ELECTRON, [ROOT, `--user-data-dir=${path.join(dir, 'electron')}`], {
       env: {
         ...process.env,
-        CLAUDE_PET_DIR: dir,
-        CLAUDE_PET_SETTINGS: path.join(dir, 'settings.json'),
+        GOGU_DIR: dir,
+        GOGU_SETTINGS: path.join(dir, 'settings.json'),
         ...env
       },
       stdio: ['ignore', 'pipe', 'pipe']
@@ -157,23 +157,23 @@ async function main() {
 
   // The pet with its status board up — the shot the README opens with.
   await shoot('pet', {
-    CLAUDE_PET_SHOT: path.join(tmp, 'pet.png'),
-    CLAUDE_PET_SHOT_HOVER: '1',
-    CLAUDE_PET_SHOT_DELAY: '5000'
+    GOGU_SHOT: path.join(tmp, 'pet.png'),
+    GOGU_SHOT_HOVER: '1',
+    GOGU_SHOT_DELAY: '5000'
   }, 12000);
   await run([path.join(__dirname, 'plate.js'), path.join(tmp, 'pet.png'), path.join(OUT, 'pet.png'), '36']);
 
   // Settings, on the tab with the wardrobe on it.
   await shoot('appearance', {
-    CLAUDE_PET_SHOT_SETTINGS: path.join(OUT, 'appearance.png'),
-    CLAUDE_PET_SHOT_TAB: 'appearance',
-    CLAUDE_PET_SHOT_DELAY: '4000'
+    GOGU_SHOT_SETTINGS: path.join(OUT, 'appearance.png'),
+    GOGU_SHOT_TAB: 'appearance',
+    GOGU_SHOT_DELAY: '4000'
   }, 12000);
   console.log('wrote', path.join(OUT, 'appearance.png'));
 
   await shoot('settings', {
-    CLAUDE_PET_SHOT_SETTINGS: path.join(OUT, 'settings.png'),
-    CLAUDE_PET_SHOT_DELAY: '4000'
+    GOGU_SHOT_SETTINGS: path.join(OUT, 'settings.png'),
+    GOGU_SHOT_DELAY: '4000'
   }, 12000);
   console.log('wrote', path.join(OUT, 'settings.png'));
 

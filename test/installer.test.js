@@ -19,7 +19,7 @@ test('install into missing settings file creates it, uninstall empties our entri
   const { settingsPath, petDirPath } = tmpSetup();
   const res = installHooks({ settingsPath, petDirPath });
   assert.ok(res.ok && res.changed);
-  assert.ok(fs.existsSync(path.join(petDirPath, 'claude-pet-hook.js')), 'hook script deployed');
+  assert.ok(fs.existsSync(path.join(petDirPath, 'gogu-hook.js')), 'hook script deployed');
   assert.ok(hooksInstalled({ settingsPath }));
 
   const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
@@ -111,7 +111,7 @@ test('install repoints command if pet dir moved', () => {
   const res = installHooks({ settingsPath: t.settingsPath, petDirPath: other });
   assert.ok(res.ok && res.changed);
   const settings = JSON.parse(fs.readFileSync(t.settingsPath, 'utf8'));
-  const cmd = settings.hooks.SessionStart.find(e => JSON.stringify(e).includes('.claude-pet')
+  const cmd = settings.hooks.SessionStart.find(e => JSON.stringify(e).includes('.gogu')
     || JSON.stringify(e).includes('pet2')).hooks[0].command;
   assert.ok(cmd.includes('pet2'), cmd);
   // still exactly one pet entry per event

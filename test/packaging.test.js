@@ -40,11 +40,11 @@ test('the cask names the files electron-builder actually produces', () => {
   // have to spell the same filename, or the release ships assets under names
   // the cask never asks for.
   const built = config.mac.artifactName
-    .replace('${productName}', 'claude-pet')   // artifactName is literal here
+    .replace('${productName}', 'gogu')   // artifactName is literal here
     .replace('${version}', '1.2.3')
     .replace('${arch}', 'arm64')
     .replace('${ext}', 'zip');
-  assert.equal(built, 'claude-pet-1.2.3-arm64.zip');
+  assert.equal(built, 'gogu-1.2.3-arm64.zip');
 
   const url = /url "([^"]+)"/.exec(cask);
   assert.ok(url, 'cask has a url');
@@ -152,13 +152,13 @@ test('the version being released is the version the app reports', () => {
   assert.match(pkg.version, /^\d+\.\d+\.\d+/);
   // The release workflow refuses a tag that disagrees with this file; keep the
   // two names it is packaged under in step as well.
-  assert.equal(pkg.name, 'claude-pet');
-  assert.equal(pkg.productName, 'Claude Pet');
+  assert.equal(pkg.name, 'gogu');
+  assert.equal(pkg.productName, 'Gogu');
 });
 
 test('render-cask writes to a file when asked', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cask-'));
-  const out = path.join(dir, 'claude-pet.rb');
+  const out = path.join(dir, 'gogu.rb');
   render(['2.0.0', SHA_A, SHA_B, out]);
   assert.match(fs.readFileSync(out, 'utf8'), /^  version "2\.0\.0"$/m);
   fs.rmSync(dir, { recursive: true, force: true });

@@ -284,12 +284,12 @@ test('status follows the hook stream: working → blocked → answered → done'
 test('a finished turn announces itself by project, once, and never on a replay', () => {
   const reg = new SessionRegistry({});
   const ctx = (now, live = true) => ({ live, now, rng: () => 0.5 });
-  reg.noteEvent(ev('SessionStart', 's1', { project: 'claudy-pet' }), ctx(T0));
+  reg.noteEvent(ev('SessionStart', 's1', { project: 'gogu' }), ctx(T0));
 
   const fx = reg.noteEvent(ev('Stop', 's1', {}, T0 + 1000), ctx(T0 + 1000));
   const bubble = fx.find(f => f.type === 'bubble');
   assert.ok(bubble, 'the end of a turn is the news the pet exists for');
-  assert.match(bubble.text, /^claudy-pet · /, 'which session finished is the whole point');
+  assert.match(bubble.text, /^gogu · /, 'which session finished is the whole point');
   assert.match(bubble.text, /✓$/);
   assert.ok(!bubble.important, 'every turn ending in amber would be a siren, not a signal');
 

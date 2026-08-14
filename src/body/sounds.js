@@ -4,7 +4,7 @@
 // allowed to bypass the mute (at a modest fixed volume).
 //
 // The motif table and its envelope are carried over from the earlier
-// claude-pet prototype: notes play back-to-back with an instant attack and an
+// Gogu prototype: notes play back-to-back with an instant attack and an
 // exponential decay across the whole note. That hard attack is what makes them
 // read as chiptune rather than as bleeps — don't "improve" it with a fade-in.
 

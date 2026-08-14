@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 'use strict';
-// claude-pet hook script — standalone, zero deps, fire-and-forget.
+// Gogu hook script — standalone, zero deps, fire-and-forget.
 //
 // Claude Code invokes this for every hooked event with a JSON payload on
-// stdin. We append one tiny JSON line to ~/.claude-pet/events.jsonl and get
+// stdin. We append one tiny JSON line to ~/.gogu/events.jsonl and get
 // out of the way. Hard rules: never block, never fail the session — every
 // path exits 0, no network, no waiting on the app.
 
@@ -18,7 +18,7 @@ const MAX_STDIN = 2 * 1024 * 1024;
 const STDIN_TIMEOUT_MS = 1500;     // never hang a session waiting on stdin
 
 function petDir() {
-  return process.env.CLAUDE_PET_DIR || path.join(os.homedir(), '.claude-pet');
+  return process.env.GOGU_DIR || path.join(os.homedir(), '.gogu');
 }
 
 function clip(s, n) {

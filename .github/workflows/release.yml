@@ -120,8 +120,8 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          arm=$(shasum -a 256 "dist/claude-pet-${VERSION}-arm64.zip" | cut -d' ' -f1)
-          x64=$(shasum -a 256 "dist/claude-pet-${VERSION}-x64.zip"   | cut -d' ' -f1)
+          arm=$(shasum -a 256 "dist/gogu-${VERSION}-arm64.zip" | cut -d' ' -f1)
+          x64=$(shasum -a 256 "dist/gogu-${VERSION}-x64.zip"   | cut -d' ' -f1)
           echo "arm=${arm}" >> "$GITHUB_OUTPUT"
           echo "x64=${x64}" >> "$GITHUB_OUTPUT"
           shasum -a 256 dist/*.zip dist/*.dmg
@@ -134,8 +134,8 @@ jobs:
         run: |
           node scripts/render-cask.js "$VERSION" \
             "${{ steps.sha.outputs.arm }}" "${{ steps.sha.outputs.x64 }}" \
-            dist/claude-pet.rb
-          cat dist/claude-pet.rb
+            dist/gogu.rb
+          cat dist/gogu.rb
 
       - name: Publish release
         env:
@@ -150,18 +150,18 @@ jobs:
           ## Install
 
           \`\`\`sh
-          brew install --cask abaicus/tap/claude-pet
+          brew install --cask abaicus/tap/gogu
           \`\`\`
 
-          Or download the disk image for your Mac: **\`claude-pet-${VERSION}-arm64.dmg\`**
-          (Apple Silicon) or **\`claude-pet-${VERSION}-x64.dmg\`** (Intel).
+          Or download the disk image for your Mac: **\`gogu-${VERSION}-arm64.dmg\`**
+          (Apple Silicon) or **\`gogu-${VERSION}-x64.dmg\`** (Intel).
 
           This build is ad-hoc signed but not notarized by Apple. The Homebrew
           cask clears the quarantine flag for you; if you use the DMG, run this
           once after dragging the app to Applications:
 
           \`\`\`sh
-          xattr -dr com.apple.quarantine "/Applications/Claude Pet.app"
+          xattr -dr com.apple.quarantine "/Applications/Gogu.app"
           \`\`\`
           EOF
           gh release create "$TAG" \
@@ -169,11 +169,11 @@ jobs:
             --notes-file "$notes" \
             --generate-notes \
             $([ "${PRERELEASE:-false}" = "true" ] && echo --prerelease) \
-            "dist/claude-pet-${VERSION}-arm64.dmg" \
-            "dist/claude-pet-${VERSION}-x64.dmg" \
-            "dist/claude-pet-${VERSION}-arm64.zip" \
-            "dist/claude-pet-${VERSION}-x64.zip" \
-            "dist/claude-pet.rb"
+            "dist/gogu-${VERSION}-arm64.dmg" \
+            "dist/gogu-${VERSION}-x64.dmg" \
+            "dist/gogu-${VERSION}-arm64.zip" \
+            "dist/gogu-${VERSION}-x64.zip" \
+            "dist/gogu.rb"
 
   homebrew:
     needs: release
@@ -211,16 +211,16 @@ jobs:
           set -euo pipefail
           mkdir -p tap/Casks
           gh release download "v${VERSION}" --repo "${GITHUB_REPOSITORY}" \
-            --pattern claude-pet.rb --output tap/Casks/claude-pet.rb --clobber
+            --pattern gogu.rb --output tap/Casks/gogu.rb --clobber
           cd tap
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # Staged before comparing: on the first release into a fresh tap the
           # cask is untracked, and `git diff` is silent about untracked files.
-          git add Casks/claude-pet.rb
+          git add Casks/gogu.rb
           if git diff --cached --quiet; then
             echo "cask already at v${VERSION}"
             exit 0
           fi
-          git commit -m "claude-pet ${VERSION}"
+          git commit -m "gogu ${VERSION}"
           git push

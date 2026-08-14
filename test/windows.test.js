@@ -114,7 +114,7 @@ test('finishing the intro is a real command, and it sticks', () => {
   assert.equal(brain.getRenderState().onboarded, false, 'the window has to be able to see it');
   assert.equal(brain.command({ type: 'completeOnboarding' }).ok, true);
   assert.equal(brain.prefs.onboarded, true);
-  assert.ok(brain.bubble && /Pixel/.test(brain.bubble.text), 'it should say hello, by name');
+  assert.ok(brain.bubble && /Gogu/.test(brain.bubble.text), 'it should say hello, by name');
   // replaying it from the menu is not a second hatching
   brain.bubble = null;
   brain.command({ type: 'completeOnboarding' });

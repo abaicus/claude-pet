@@ -13,8 +13,8 @@ const signed = Boolean(process.env.CSC_LINK);
 const notarize = signed && Boolean(process.env.APPLE_TEAM_ID);
 
 module.exports = {
-  appId: 'com.abaicus.claude-pet',
-  productName: 'Claude Pet',
+  appId: 'com.abaicus.gogu',
+  productName: 'Gogu',
   copyright: 'Copyright © Andrei Baicus',
 
   directories: { buildResources: 'build', output: 'dist' },
@@ -35,7 +35,7 @@ module.exports = {
     icon: 'build/icon.icns',
     // Arch in every name, x64 included: electron-builder's default drops it
     // for x64, and the Homebrew cask interpolates one name for both arches.
-    artifactName: 'claude-pet-${version}-${arch}.${ext}',
+    artifactName: 'gogu-${version}-${arch}.${ext}',
     target: [
       { target: 'dmg', arch: ['arm64', 'x64'] },
       { target: 'zip', arch: ['arm64', 'x64'] } // the cask installs from this
@@ -62,5 +62,5 @@ module.exports = {
 
   afterPack: './build/after-pack.js',
 
-  publish: [{ provider: 'github', owner: 'abaicus', repo: 'claude-pet' }]
+  publish: [{ provider: 'github', owner: 'abaicus', repo: 'gogu' }]
 };

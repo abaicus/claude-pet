@@ -427,7 +427,7 @@ test('what the payload names, the pet says by name', () => {
 test('the fallback fills a silence, it does not talk over anyone', () => {
   const c = ctx();
   // the session registry already named the project that finished
-  const spoken = [{ type: 'sound', name: 'done' }, { type: 'bubble', text: 'claudy-pet · your turn~ ✓' }];
+  const spoken = [{ type: 'sound', name: 'done' }, { type: 'bubble', text: 'gogu · your turn~ ✓' }];
   ensureWords(spoken, c);
   assert.equal(spoken.filter(f => f.type === 'bubble').length, 1, 'two voices for one event');
   // and it stays quiet on a replayed backlog, like everything else

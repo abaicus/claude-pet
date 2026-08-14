@@ -23,16 +23,16 @@ git push && git push --tags
 
 | Asset | What it is |
 | --- | --- |
-| `claude-pet-<v>-arm64.dmg` / `-x64.dmg` | drag-to-Applications download |
-| `claude-pet-<v>-arm64.zip` / `-x64.zip` | what the Homebrew cask installs |
-| `claude-pet.rb` | the rendered cask — the tap copies this file verbatim |
+| `gogu-<v>-arm64.dmg` / `-x64.dmg` | drag-to-Applications download |
+| `gogu-<v>-arm64.zip` / `-x64.zip` | what the Homebrew cask installs |
+| `gogu.rb` | the rendered cask — the tap copies this file verbatim |
 
 ## The two routes into the tap
 
-1. **Push** — the release workflow commits `Casks/claude-pet.rb` to the tap
+1. **Push** — the release workflow commits `Casks/gogu.rb` to the tap
    directly. Needs a `HOMEBREW_TAP_TOKEN` secret on this repo (below).
 2. **Pull** — the tap's own `update-cask` workflow checks this repo's latest
-   release hourly and copies the `claude-pet.rb` asset. It uses the tap's own
+   release hourly and copies the `gogu.rb` asset. It uses the tap's own
    `GITHUB_TOKEN` and needs no secret at all.
 
 Route 2 exists so a missing or expired token delays the cask by an hour
@@ -48,7 +48,7 @@ scoped to `abaicus/homebrew-tap`
 then add it here as `HOMEBREW_TAP_TOKEN`:
 
 ```sh
-gh secret set HOMEBREW_TAP_TOKEN --repo abaicus/claude-pet
+gh secret set HOMEBREW_TAP_TOKEN --repo abaicus/gogu
 ```
 
 ## Signing

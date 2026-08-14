@@ -1,15 +1,15 @@
 <div align="center">
 
-# claude-pet
+# Gogu
 
 **A desktop tamagotchi that feeds on your Claude Code sessions.**
 
 It floats above your windows, eats the work you do, grows — and tells you
 which terminal is waiting on you.
 
-[![release](https://img.shields.io/github/v/release/abaicus/claude-pet?color=4fbf96&label=release)](https://github.com/abaicus/claude-pet/releases/latest)
-[![macOS](https://img.shields.io/badge/macOS-10.15%2B-2b2b2b)](https://github.com/abaicus/claude-pet/releases/latest)
-[![CI](https://github.com/abaicus/claude-pet/actions/workflows/ci.yml/badge.svg)](https://github.com/abaicus/claude-pet/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/abaicus/gogu?color=4fbf96&label=release)](https://github.com/abaicus/gogu/releases/latest)
+[![macOS](https://img.shields.io/badge/macOS-10.15%2B-2b2b2b)](https://github.com/abaicus/gogu/releases/latest)
+[![CI](https://github.com/abaicus/gogu/actions/workflows/ci.yml/badge.svg)](https://github.com/abaicus/gogu/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-2b2b2b)](LICENSE)
 
 <img src="docs/media/pet.png" width="360" alt="The pet, with a speech bubble and a status line for each live Claude session">
@@ -19,17 +19,17 @@ which terminal is waiting on you.
 ## Install
 
 ```sh
-brew install --cask abaicus/tap/claude-pet
+brew install --cask abaicus/tap/gogu
 ```
 
 Or download the disk image from **[the latest
-release](https://github.com/abaicus/claude-pet/releases/latest)** — `arm64` for
-Apple Silicon, `x64` for Intel — and drag it to Applications. The build is
+release](https://github.com/abaicus/gogu/releases/latest)** — `arm64` for Apple
+Silicon, `x64` for Intel — and drag it to Applications. The build is
 ad-hoc signed but not notarized by Apple, so a DMG install needs the quarantine
 flag cleared once (the Homebrew cask does this for you):
 
 ```sh
-xattr -dr com.apple.quarantine "/Applications/Claude Pet.app"
+xattr -dr com.apple.quarantine "/Applications/Gogu.app"
 ```
 
 macOS 10.15+. Launch it and it does the rest: it installs its Claude Code hooks
@@ -46,11 +46,11 @@ prompt looks exactly like the one happily working.
 So every live session gets its own line under the pet:
 
 ```
-      Pixel lv.12 │ 46k/5h │ ✓×5 │ ☑ 3/7        ← the pet itself
-  ! claudy-pet · needs permission 17s · ~34%     ← amber: it cannot continue
+      Gogu lv.12 │ 46k/5h │ ✓×5 │ ☑ 3/7        ← the pet itself
+  ! gogu · needs permission 17s · ~34%         ← amber: it cannot continue
   … api-server · waiting for you 4m · ~71%
-  ✓ web · done 2m · ~18%                         ← your turn
-  ▸ docs-site · working · ~9%                    ← needs nothing from you
+  ✓ web · done 2m · ~18%                       ← your turn
+  ▸ docs-site · working · ~9%                  ← needs nothing from you
 ```
 
 Sorted by who is blocked on whom: what can't continue without you comes first,
@@ -129,8 +129,8 @@ It watches your sessions, so this matters more than the rest of the README:
 
 - It records the **length** of your prompt and **not one character of its
   text**.
-- Everything it keeps lives in `~/.claude-pet/` as human-readable JSON. Nothing
-  is sent anywhere — there is no network code in this app.
+- Everything it keeps lives in `~/.gogu/` as human-readable JSON. Nothing is
+  sent anywhere — there is no network code in this app.
 - The hook script is fire-and-forget: it appends one line and exits, and it
   can never block, slow or fail a Claude session.
 - Installing hooks appends to `~/.claude/settings.json` and preserves the rest
@@ -194,13 +194,13 @@ Context warnings fire once at ~75% and ~90% per session, and re-arm below 60%.
 ## Uninstall
 
 ```sh
-brew uninstall --cask claude-pet          # or drag the app to the Trash
+brew uninstall --cask gogu                # or drag the app to the Trash
 ```
 
 Remove its hooks first (tray → *uninstall hooks*, or the settings window) if
 you want your `~/.claude/settings.json` cleaned up — the app only ever removes
-its own entries. `brew uninstall --zap --cask claude-pet` also deletes
-`~/.claude-pet`; it deliberately leaves your Claude config alone.
+its own entries. `brew uninstall --zap --cask gogu` also deletes `~/.gogu`;
+it deliberately leaves your Claude config alone.
 
 ## Development
 
@@ -212,6 +212,7 @@ npm test                                  # headless brain tests (node:test)
 npm run dist                              # DMG + ZIP for both arches → dist/
 npm run icon                              # redraw build/icon.icns from art.js
 npm run shots                             # re-render the README screenshots
+npm run shots:gif                         # record the pet reacting → an animated GIF
 npx electron scripts/shoot-mockups.js     # render art mockups to mockups/*.png
 ```
 
@@ -221,15 +222,18 @@ in [docs/releasing.md](docs/releasing.md).
 Sandboxing for development — never touches your real config:
 
 ```sh
-CLAUDE_PET_DIR=/tmp/pet-sandbox \
-CLAUDE_PET_SETTINGS=/tmp/pet-sandbox/settings.json \
+GOGU_DIR=/tmp/pet-sandbox \
+GOGU_SETTINGS=/tmp/pet-sandbox/settings.json \
 npm start
 ```
 
-Debug env: `CLAUDE_PET_NO_HOOKS=1` (skip hook install), and for screenshots
-`CLAUDE_PET_SHOT=/path.png` / `CLAUDE_PET_SHOT_SETTINGS=/path.png` with
-`CLAUDE_PET_SHOT_DELAY=ms`, `CLAUDE_PET_SHOT_HOVER=1` (raise the stats line)
-and `CLAUDE_PET_SHOT_TAB=appearance`.
+Debug env: `GOGU_NO_HOOKS=1` (skip hook install), and for screenshots
+`GOGU_SHOT=/path.png` / `GOGU_SHOT_SETTINGS=/path.png` with
+`GOGU_SHOT_DELAY=ms`, `GOGU_SHOT_HOVER=1` (raise the stats line) and
+`GOGU_SHOT_TAB=appearance`. `GOGU_SHOT_FRAMES=n` with
+`GOGU_SHOT_EVERY=ms` turns the shot into a numbered burst — that is how
+`shots:gif` records a reaction, by appending events to the sandbox's
+`events.jsonl` on a timeline while the app photographs itself (needs `ffmpeg`).
 
 Every screenshot in this README is generated by `npm run shots`, which seeds a
 sandbox with the same `events.jsonl` the hooks write and the same transcripts
@@ -255,9 +259,8 @@ src/
   shared/     constants, tuning, IPC channel names
 ```
 
-State lives in `~/.claude-pet/` as human-readable versioned JSON
-(`state.json` progression · `prefs.json` customization · `cursor.json`
-read offsets). Players may cheat; that's a feature.
+State lives in `~/.gogu/` as human-readable versioned JSON (`state.json`
+progression · `prefs.json` customization · `cursor.json` read offsets). Players may cheat; that's a feature.
 
 ## License
 

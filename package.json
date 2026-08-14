@@ -1,6 +1,6 @@
 {
-  "name": "claude-pet",
-  "productName": "Claude Pet",
+  "name": "gogu",
+  "productName": "Gogu",
   "version": "0.1.0",
   "description": "A desktop tamagotchi that feeds on Claude Code activity.",
   "main": "src/main.js",
@@ -10,16 +10,17 @@
     "name": "Andrei Baicus",
     "email": "baicusandrei@gmail.com"
   },
-  "homepage": "https://github.com/abaicus/claude-pet",
+  "homepage": "https://github.com/abaicus/gogu",
   "repository": {
     "type": "git",
-    "url": "https://github.com/abaicus/claude-pet.git"
+    "url": "https://github.com/abaicus/gogu.git"
   },
   "scripts": {
     "start": "electron .",
     "test": "node --test test/*.test.js",
     "icon": "electron scripts/make-icon.js",
     "shots": "node scripts/shoot-readme.js",
+    "shots:gif": "node scripts/shoot-gif.js",
     "pack": "electron-builder --mac --dir --config electron-builder.config.js",
     "dist": "electron-builder --mac --config electron-builder.config.js"
   },

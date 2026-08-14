@@ -6,13 +6,13 @@ const os = require('os');
 const path = require('path');
 
 // ---------------------------------------------------------------- paths
-// CLAUDE_PET_DIR / CLAUDE_PET_SETTINGS let tests and smoke runs sandbox
-// everything away from the real ~/.claude-pet and ~/.claude/settings.json.
+// GOGU_DIR / GOGU_SETTINGS let tests and smoke runs sandbox everything away
+// from the real ~/.gogu and ~/.claude/settings.json.
 function petDir() {
-  return process.env.CLAUDE_PET_DIR || path.join(os.homedir(), '.claude-pet');
+  return process.env.GOGU_DIR || path.join(os.homedir(), '.gogu');
 }
 function claudeSettingsPath() {
-  return process.env.CLAUDE_PET_SETTINGS || path.join(os.homedir(), '.claude', 'settings.json');
+  return process.env.GOGU_SETTINGS || path.join(os.homedir(), '.claude', 'settings.json');
 }
 
 const FILES = {
@@ -20,7 +20,7 @@ const FILES = {
   state: 'state.json',      // progression (wiped by reset)
   prefs: 'prefs.json',      // customization + window position (survives reset)
   cursor: 'cursor.json',    // event-log read offset (survives reset — real bug once)
-  hook: 'claude-pet-hook.js' // installed copy of the hook script (name doubles as ownership marker)
+  hook: 'gogu-hook.js'      // installed copy of the hook script (name doubles as ownership marker)
 };
 
 // ---------------------------------------------------------------- leveling

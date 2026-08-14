@@ -109,7 +109,7 @@ function createSettingsWindow() {
     // laid out) without a scrollbar on a laptop screen; the rest scrolls.
     width: 480, height: 700, minWidth: 440, maxWidth: 640, minHeight: 320,
     frame: false, transparent: true, hasShadow: false, resizable: true,
-    title: 'claude-pet settings', fullscreenable: false, maximizable: false,
+    title: 'Gogu settings', fullscreenable: false, maximizable: false,
     webPreferences: {
       preload: path.join(__dirname, 'body', 'preload.js'),
       contextIsolation: true,
@@ -234,7 +234,7 @@ function buildMenu() {
     { label: 'Reinstall Claude hooks', click: () => brain.command({ type: 'installHooks' }) },
     { label: 'Uninstall Claude hooks', click: () => brain.command({ type: 'uninstallHooks' }) },
     { type: 'separator' },
-    { label: 'Quit claude-pet', click: () => app.quit(), ...key('quit') }
+    { label: 'Quit Gogu', click: () => app.quit(), ...key('quit') }
   ]);
 }
 
@@ -250,7 +250,7 @@ function createTray() {
   icon.addRepresentation({ scaleFactor: 2, width: 32, height: 32, buffer: png2x });
   icon.setTemplateImage(true); // auto light/dark
   tray = new Tray(icon);
-  tray.setToolTip('claude-pet');
+  tray.setToolTip('Gogu');
   rebuildTray();
 }
 
@@ -358,7 +358,7 @@ app.whenReady().then(() => {
 
   brain = new Brain({ dir: petDir(), settingsPath: claudeSettingsPath() });
   brain.on('state', broadcast);
-  brain.start({ installHooks: process.env.CLAUDE_PET_NO_HOOKS !== '1' });
+  brain.start({ installHooks: process.env.GOGU_NO_HOOKS !== '1' });
 
   wireIpc();
   createPetWindow();
@@ -372,48 +372,68 @@ app.whenReady().then(() => {
 
   setInterval(maybeStartWander, 45 * 1000);
 
-  // Dev/debug: screenshot the pet window (CLAUDE_PET_SHOT=/path/out.png)
-  if (process.env.CLAUDE_PET_SHOT) {
-    // CLAUDE_PET_SHOT_HOVER parks a cursor on the pet so the stats line and
+  // Dev/debug: screenshot the pet window (GOGU_SHOT=/path/out.png)
+  if (process.env.GOGU_SHOT) {
+    // GOGU_SHOT_HOVER parks a cursor on the pet so the stats line and
     // the session lines are UP for the shot. Hover is driven by the cursor
     // feed (see startCursorFeed), and a screenshot cannot move a mouse — so
     // the real feed is replaced rather than raced with.
-    if (process.env.CLAUDE_PET_SHOT_HOVER) {
+    if (process.env.GOGU_SHOT_HOVER) {
       if (cursorTimer) clearInterval(cursorTimer);
       cursorTimer = setInterval(() => {
         if (!petWin || petWin.isDestroyed()) return;
         petWin.webContents.send(IPC.cursor, { dx: 0, dy: 40, walking: false, facing: 0 });
       }, 100);
     }
+    // GOGU_SHOT_FRAMES turns the single shot into a burst — one numbered
+    // PNG per frame, for an encoder to turn into an animation. A recording is
+    // the only honest way to show a REACTION: the pet chomping a feast or
+    // throwing confetti at a commit is the app answering seeded events, not a
+    // second implementation of the animation posing for the camera.
+    const burst = Number(process.env.GOGU_SHOT_FRAMES || 0);
     setTimeout(async () => {
       try {
+        if (burst > 1) {
+          const p = require('path');
+          const dir = p.dirname(process.env.GOGU_SHOT);
+          const stem = p.basename(process.env.GOGU_SHOT).replace(/\.png$/i, '');
+          const every = Number(process.env.GOGU_SHOT_EVERY || 80);
+          for (let i = 0; i < burst; i++) {
+            const frame = await petWin.webContents.capturePage();
+            require('fs').writeFileSync(
+              p.join(dir, `${stem}-${String(i).padStart(4, '0')}.png`), frame.toPNG());
+            await new Promise(r => setTimeout(r, every));
+          }
+          console.log('shot written:', burst, 'frames');
+          return;
+        }
         const img = await petWin.webContents.capturePage();
-        require('fs').writeFileSync(process.env.CLAUDE_PET_SHOT, img.toPNG());
-        console.log('shot written:', process.env.CLAUDE_PET_SHOT);
+        require('fs').writeFileSync(process.env.GOGU_SHOT, img.toPNG());
+        console.log('shot written:', process.env.GOGU_SHOT);
       } catch (err) { console.error('shot failed', err); }
-    }, Number(process.env.CLAUDE_PET_SHOT_DELAY || 3000));
+    }, Number(process.env.GOGU_SHOT_DELAY || 3000));
   }
-  if (process.env.CLAUDE_PET_SHOT_SETTINGS) {
+  if (process.env.GOGU_SHOT_SETTINGS) {
     createSettingsWindow();
     setTimeout(async () => {
       try {
         // Which tab to shoot. The window always opens on the first one, and
         // the wardrobe lives on another.
-        if (process.env.CLAUDE_PET_SHOT_TAB) {
+        if (process.env.GOGU_SHOT_TAB) {
           await settingsWin.webContents.executeJavaScript(
-            `showTab(${JSON.stringify(process.env.CLAUDE_PET_SHOT_TAB)})`);
+            `showTab(${JSON.stringify(process.env.GOGU_SHOT_TAB)})`);
           await new Promise(r => setTimeout(r, 200));
         }
-        if (process.env.CLAUDE_PET_SHOT_SCROLL) {
+        if (process.env.GOGU_SHOT_SCROLL) {
           await settingsWin.webContents.executeJavaScript(
-            `window.scrollTo(0, ${process.env.CLAUDE_PET_SHOT_SCROLL === 'end' ? 'document.body.scrollHeight' : Number(process.env.CLAUDE_PET_SHOT_SCROLL) || 0})`);
+            `window.scrollTo(0, ${process.env.GOGU_SHOT_SCROLL === 'end' ? 'document.body.scrollHeight' : Number(process.env.GOGU_SHOT_SCROLL) || 0})`);
           await new Promise(r => setTimeout(r, 300));
         }
         const img = await settingsWin.webContents.capturePage();
-        require('fs').writeFileSync(process.env.CLAUDE_PET_SHOT_SETTINGS, img.toPNG());
+        require('fs').writeFileSync(process.env.GOGU_SHOT_SETTINGS, img.toPNG());
         console.log('settings shot written');
       } catch (err) { console.error('settings shot failed', err); }
-    }, Number(process.env.CLAUDE_PET_SHOT_DELAY || 3000));
+    }, Number(process.env.GOGU_SHOT_DELAY || 3000));
   }
 });
 

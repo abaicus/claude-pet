@@ -52,7 +52,7 @@ jobs:
       - name: The bundle is signed, complete and launchable
         run: |
           set -euo pipefail
-          app="dist/mac-arm64/Claude Pet.app"
+          app="dist/mac-arm64/Gogu.app"
           test -d "$app"
 
           # Ad-hoc is the floor: an unsigned binary is killed outright on
@@ -124,8 +124,8 @@ jobs:
           git -C "$tap" init -q
           node scripts/render-cask.js 9.9.9 \
             "$(printf 'a%.0s' {1..64})" "$(printf 'b%.0s' {1..64})" \
-            "$tap/Casks/claude-pet.rb"
-          cat "$tap/Casks/claude-pet.rb"
-          ruby -c "$tap/Casks/claude-pet.rb"
+            "$tap/Casks/gogu.rb"
+          cat "$tap/Casks/gogu.rb"
+          ruby -c "$tap/Casks/gogu.rb"
           brew style abaicus/tap
-          brew audit --cask abaicus/tap/claude-pet
+          brew audit --cask abaicus/tap/gogu

@@ -11,7 +11,7 @@ const HOOK = path.join(__dirname, '..', 'src', 'capture', 'hook.js');
 function runHook(payload, dir) {
   execFileSync(process.execPath, [HOOK], {
     input: typeof payload === 'string' ? payload : JSON.stringify(payload),
-    env: Object.assign({}, process.env, { CLAUDE_PET_DIR: dir }),
+    env: Object.assign({}, process.env, { GOGU_DIR: dir }),
     timeout: 5000
   });
 }

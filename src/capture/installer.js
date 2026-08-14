@@ -11,7 +11,7 @@ const path = require('path');
 // Marker: any hook command that references this filename is ours. The
 // distinctive filename makes ownership detection independent of where the
 // pet dir lives.
-const HOOK_MARKER = 'claude-pet-hook.js';
+const HOOK_MARKER = 'gogu-hook.js';
 
 const HOOK_EVENTS = [
   'SessionStart', 'SessionEnd', 'Stop', 'UserPromptSubmit',
@@ -70,7 +70,7 @@ function readSettings(settingsPath) {
 
 function writeSettings(settingsPath, settings, fmt) {
   fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-  const tmp = settingsPath + '.claude-pet-tmp';
+  const tmp = settingsPath + '.gogu-tmp';
   fs.writeFileSync(tmp, serialize(settings, fmt));
   fs.renameSync(tmp, settingsPath);
 }

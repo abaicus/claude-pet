@@ -102,10 +102,10 @@ test('non-important bubbles respect mute; important ones bypass it', () => {
 
 test('stats line: idle collapses, active shows real telemetry, hidden toggle', () => {
   const { brain } = makeBrain();
-  brain.prefs.name = 'Pixel';
+  brain.prefs.name = 'Gogu';
   let line = brain.statsLine(T0);
   assert.equal(line.mode, 'idle');
-  assert.equal(line.text, 'Pixel lv.0');
+  assert.equal(line.text, 'Gogu lv.0');
   assert.deepEqual(line.lines, []);
 
   // fake a live session with ctx
@@ -116,7 +116,7 @@ test('stats line: idle collapses, active shows real telemetry, hidden toggle', (
   assert.equal(line.mode, 'active');
   // The pill is what's true of the PET; per-session facts belong to the lines
   // and must not also be crammed in here.
-  assert.match(line.text, /Pixel lv\.0 │ .*\/5h │ ✓×5/);
+  assert.match(line.text, /Gogu lv\.0 │ .*\/5h │ ✓×5/);
   assert.ok(!/session|ctx/.test(line.text), `session detail duplicated in the pill: ${line.text}`);
   assert.equal(line.lines.length, 1, 'every session gets a line, even the only one');
   assert.match(line.lines[0].text, /alpha · working · ~72%/);
@@ -159,7 +159,7 @@ test('session lines: whoever is waiting on you comes first, and says so', () => 
 
 test('a session whose context has not been read shows no context at all', () => {
   const { brain } = makeBrain();
-  brain.prefs.name = 'Pixel';
+  brain.prefs.name = 'Gogu';
   brain.sessions.noteEvent({ t: 'SessionStart', ts: T0, sid: 's1', project: 'alpha' });
   const line = brain.statsLine(T0);
   assert.equal(line.mode, 'active');
@@ -346,11 +346,11 @@ test('a turn that ends makes a noise AND says who finished', () => {
   const { brain, dir } = makeBrain();
   brain.replayDone = true;
   brain.prefs.bubbles = true;
-  brain.onEvents([{ t: 'Stop', ts: T0, sid: 's1', project: 'claudy-pet', cwd: '/x/claudy-pet' }]);
+  brain.onEvents([{ t: 'Stop', ts: T0, sid: 's1', project: 'gogu', cwd: '/x/gogu' }]);
   const rs = brain.getRenderState();
   assert.ok(rs.sounds.some(s => s.name === 'done'), 'no chime');
   assert.ok(rs.bubble && rs.bubble.text, 'the pet chirped and said nothing');
-  assert.match(rs.bubble.text, /claudy-pet/, 'the one thing you cannot see for yourself');
+  assert.match(rs.bubble.text, /gogu/, 'the one thing you cannot see for yourself');
   assert.ok(dir);
 });
 
