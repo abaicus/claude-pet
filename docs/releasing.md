@@ -1,7 +1,7 @@
 # Releasing
 
-Two artifacts come out of one run: the **downloadable app** (DMG + ZIP, Apple
-Silicon and Intel, attached to a GitHub release) and the **Homebrew cask** in
+Two artifacts come out of one run: the **downloadable app** (a DMG each for
+Apple Silicon and Intel, attached to a GitHub release) and the **Homebrew cask** in
 [abaicus/homebrew-tap](https://github.com/abaicus/homebrew-tap).
 
 ## Cutting a release
@@ -23,9 +23,27 @@ git push && git push --tags
 
 | Asset | What it is |
 | --- | --- |
-| `gogu-<v>-arm64.dmg` / `-x64.dmg` | drag-to-Applications download |
-| `gogu-<v>-arm64.zip` / `-x64.zip` | what the Homebrew cask installs |
+| `gogu-<v>-arm64.dmg` / `-x64.dmg` | the download, and what the Homebrew cask installs |
 | `gogu.rb` | the rendered cask — the tap copies this file verbatim |
+
+One image per arch, ~57 MB each. There used to be a zip alongside for the cask
+to install from; the cask reads the dmg now, which is smaller for the same app.
+
+## Why the download is not 95 MB
+
+Most of an Electron app is Electron, and most of the rest is reachable only in
+theory. Three things hold the size down, none of them the app's own code:
+
+- `build/after-pack.js` deletes Chromium's 50-odd non-English `.lproj`
+  bundles and its SwiftShader driver — 58 MB the app has no way to reach.
+  (`mac.electronLanguages` looks like it does the first job and does not: on
+  macOS it only prunes the empty stubs under `Contents/Resources`.)
+- The dmg is built with lzfse rather than zlib.
+- `build/after-all.js` re-compresses it again with `ULMO`, which is another
+  17-19 MB and which electron-builder's config schema refuses to name.
+
+CI asserts the first of those on every build, because a prune that stops
+running produces an app that is correct in every way except its weight.
 
 ## The two routes into the tap
 
@@ -79,7 +97,7 @@ Gatekeeper would have accepted anyway is a habit worth losing.
 ## Building locally
 
 ```sh
-npm run dist     # dist/*.dmg, dist/*.zip for both arches
+npm run dist     # dist/*.dmg for both arches
 npm run pack     # just the .app, no disk image — faster when checking packaging
 npm run icon     # regenerate build/icon.icns from the pet's own drawing code
 ```

@@ -76,6 +76,16 @@ jobs:
             fi
           done
 
+          # The prune in build/after-pack.js is worth 58 MB and is invisible
+          # when it stops running: the app is identical, only fatter. So the
+          # bundle is asked directly what it still carries.
+          fw="$app/Contents/Frameworks/Electron Framework.framework/Versions/A"
+          langs=$(ls -d "$fw/Resources"/*.lproj | xargs -n1 basename | tr '\n' ' ')
+          test "$langs" = "en.lproj " || { echo "::error::unpruned languages: $langs"; exit 1; }
+          test ! -e "$fw/Libraries/libvk_swiftshader.dylib" \
+            || { echo "::error::swiftshader is back in the bundle"; exit 1; }
+          du -sm "$app"
+
           plist="$app/Contents/Info.plist"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" \
              = "$(node -p 'require("./package.json").version')"

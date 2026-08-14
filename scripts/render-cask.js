@@ -38,7 +38,7 @@ const cask = `cask "gogu" do
   sha256 arm:   "${shaArm}",
          intel: "${shaIntel}"
 
-  url "https://github.com/abaicus/gogu/releases/download/v#{version}/gogu-#{version}-#{arch}.zip"
+  url "https://github.com/abaicus/gogu/releases/download/v#{version}/gogu-#{version}-#{arch}.dmg"
   name "Gogu"
   desc "Desktop tamagotchi that feeds on Claude Code activity"
   homepage "https://github.com/abaicus/gogu"

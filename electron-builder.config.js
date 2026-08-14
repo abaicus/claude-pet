@@ -36,9 +36,11 @@ module.exports = {
     // Arch in every name, x64 included: electron-builder's default drops it
     // for x64, and the Homebrew cask interpolates one name for both arches.
     artifactName: 'gogu-${version}-${arch}.${ext}',
+    // One artifact per arch. A zip of the same app used to ship alongside for
+    // the cask to install from; the cask installs from the dmg now, which is
+    // ~20 MB smaller for the same bytes on disk.
     target: [
-      { target: 'dmg', arch: ['arm64', 'x64'] },
-      { target: 'zip', arch: ['arm64', 'x64'] } // the cask installs from this
+      { target: 'dmg', arch: ['arm64', 'x64'] }
     ],
     darkModeSupport: true,
     // Electron 33 runs on Catalina and later.
@@ -52,6 +54,12 @@ module.exports = {
   },
 
   dmg: {
+    // lzfse rather than the default zlib: 85 MB → 77 MB on the same bundle,
+    // mountable since 10.11. build/after-all.js then re-compresses to ULMO,
+    // which is another 17-19 MB and which electron-builder's config schema
+    // refuses to spell even though hdiutil accepts it. This stays the floor
+    // the release falls back to if that conversion cannot run.
+    format: 'ULFO',
     // Drag-to-Applications, the only layout anyone reads without instructions.
     contents: [
       { x: 140, y: 180, type: 'file' },
@@ -61,6 +69,7 @@ module.exports = {
   },
 
   afterPack: './build/after-pack.js',
+  afterAllArtifactBuild: './build/after-all.js',
 
   publish: [{ provider: 'github', owner: 'abaicus', repo: 'gogu' }]
 };

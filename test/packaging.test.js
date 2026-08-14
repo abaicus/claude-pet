@@ -43,8 +43,8 @@ test('the cask names the files electron-builder actually produces', () => {
     .replace('${productName}', 'gogu')   // artifactName is literal here
     .replace('${version}', '1.2.3')
     .replace('${arch}', 'arm64')
-    .replace('${ext}', 'zip');
-  assert.equal(built, 'gogu-1.2.3-arm64.zip');
+    .replace('${ext}', 'dmg');
+  assert.equal(built, 'gogu-1.2.3-arm64.dmg');
 
   const url = /url "([^"]+)"/.exec(cask);
   assert.ok(url, 'cask has a url');
@@ -54,10 +54,40 @@ test('the cask names the files electron-builder actually produces', () => {
   assert.ok(resolved.endsWith(`/${built}`),
     `cask url ${resolved} does not end in the built artifact ${built}`);
 
-  // …and the zip target has to exist for both arches the cask offers.
-  const zip = config.mac.target.find(t => t.target === 'zip');
-  assert.ok(zip, 'a zip target is what the cask installs from');
-  assert.deepEqual(zip.arch.slice().sort(), ['arm64', 'x64']);
+  // …and the dmg target has to exist for both arches the cask offers.
+  const dmg = config.mac.target.find(t => t.target === 'dmg');
+  assert.ok(dmg, 'a dmg target is what the cask installs from');
+  assert.deepEqual(dmg.arch.slice().sort(), ['arm64', 'x64']);
+});
+
+test('the dmg is compressed with a format the supported floor can mount', () => {
+  const config = require(path.join(ROOT, 'electron-builder.config.js'));
+  const cask = render(['1.2.3', SHA_A, SHA_B]);
+  // ULMO is worth 19 MB per arch over ULFO, but hdiutil only learned to mount
+  // it in 10.15. Shipping it to a Mac the cask still says yes to would be a
+  // download that cannot be opened, so the two floors have to agree.
+  assert.equal(config.mac.minimumSystemVersion, '10.15.0');
+  assert.match(cask, /depends_on macos: :catalina/);
+
+  // The config cannot ask for ULMO — electron-builder validates dmg.format
+  // against a list that predates it — so it asks for the best format the
+  // schema allows and a hook converts. Both halves have to stay present:
+  // ULFO alone silently ships 19 MB more.
+  assert.equal(config.dmg.format, 'ULFO');
+  assert.equal(config.afterAllArtifactBuild, './build/after-all.js');
+  const hook = fs.readFileSync(path.join(ROOT, 'build', 'after-all.js'), 'utf8');
+  assert.match(hook, /'-format', 'ULMO'/);
+});
+
+test('the build drops the weight the app cannot reach', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'build', 'after-pack.js'), 'utf8');
+  // electron-builder runs afterPack before it signs. If pruning ever moved
+  // behind the CSC_LINK guard it would run on unsigned builds only, and the
+  // notarized release would quietly go back to being 40 MB of Chromese.
+  const guard = src.indexOf('if (process.env.CSC_LINK) return');
+  const pruned = src.indexOf('prune(appPath)');
+  assert.ok(pruned > 0 && guard > 0, 'both the prune and the guard are there');
+  assert.ok(pruned < guard, 'signed builds must be pruned too');
 });
 
 test('the cask installs the app the build is named after', () => {

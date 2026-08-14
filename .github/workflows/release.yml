@@ -120,11 +120,12 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          arm=$(shasum -a 256 "dist/gogu-${VERSION}-arm64.zip" | cut -d' ' -f1)
-          x64=$(shasum -a 256 "dist/gogu-${VERSION}-x64.zip"   | cut -d' ' -f1)
+          arm=$(shasum -a 256 "dist/gogu-${VERSION}-arm64.dmg" | cut -d' ' -f1)
+          x64=$(shasum -a 256 "dist/gogu-${VERSION}-x64.dmg"   | cut -d' ' -f1)
           echo "arm=${arm}" >> "$GITHUB_OUTPUT"
           echo "x64=${x64}" >> "$GITHUB_OUTPUT"
-          shasum -a 256 dist/*.zip dist/*.dmg
+          shasum -a 256 dist/*.dmg
+          ls -lh dist/*.dmg
 
       # Rendered here and shipped as an asset so both routes into the tap copy
       # one file rather than each re-deriving it.
@@ -171,8 +172,6 @@ jobs:
             $([ "${PRERELEASE:-false}" = "true" ] && echo --prerelease) \
             "dist/gogu-${VERSION}-arm64.dmg" \
             "dist/gogu-${VERSION}-x64.dmg" \
-            "dist/gogu-${VERSION}-arm64.zip" \
-            "dist/gogu-${VERSION}-x64.zip" \
             "dist/gogu.rb"
 
   homebrew:
