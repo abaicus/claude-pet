@@ -74,6 +74,7 @@
   .tab[aria-selected="true"],
   .tab[aria-selected="true"]:hover { background: var(--paper); color: var(--ink); }
   .panel[hidden] { display: none; }
+  .tab[hidden] { display: none; }   /* DEBUG hides here until the secret knock */
 
   /* min-height:0 is load-bearing: without it a flex item refuses to shrink
      below its content, so the card outgrows its own border. */
@@ -216,7 +217,7 @@
   <div id="tabs" role="tablist" aria-label="settings sections">
     <button class="tab" id="tab-settings" role="tab" data-panel="settings" aria-selected="true" aria-controls="panel-settings">SETTINGS</button>
     <button class="tab" id="tab-appearance" role="tab" data-panel="appearance" aria-selected="false" aria-controls="panel-appearance">APPEARANCE</button>
-    <button class="tab" id="tab-debug" role="tab" data-panel="debug" aria-selected="false" aria-controls="panel-debug">DEBUG</button>
+    <button class="tab" id="tab-debug" role="tab" data-panel="debug" aria-selected="false" aria-controls="panel-debug" hidden>DEBUG</button>
   </div>
 
   <div id="scroll">
@@ -322,7 +323,7 @@
     </div>
   </div>
 
-  <div id="hint">CHANGES APPLY INSTANTLY · <span id="tabkey">⌘</span>1-3 TABS · ESC CLOSES</div>
+  <div id="hint">CHANGES APPLY INSTANTLY · <span id="tabkey">⌘</span><span id="tabrange">1-2</span> TABS · ESC CLOSES</div>
 </div>
 <script src="settings.js"></script>
 </body>

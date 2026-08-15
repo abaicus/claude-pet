@@ -105,6 +105,9 @@ petAPI.getState().then(render);
 // knows nor cares, and the window opens on the first tab every time. Hidden
 // panels stay in the DOM, so render() keeps filling them in either way.
 const tabs = [...document.querySelectorAll('.tab')];
+// DEBUG starts hidden and only Ctrl/⌘ + "+" summons it, so every keyboard
+// path (arrows, ⌘1-9) walks the visible strip, not the full tab list.
+const visibleTabs = () => tabs.filter((t) => !t.hidden);
 function showTab(name) {
   for (const t of tabs) {
     const on = t.dataset.panel === name;
@@ -114,17 +117,18 @@ function showTab(name) {
   }
   $('scroll').scrollTop = 0;    // a panel you just opened starts at its top
 }
-tabs.forEach((t, i) => {
+for (const t of tabs) {
   t.addEventListener('click', () => showTab(t.dataset.panel));
   t.addEventListener('keydown', (e) => {
     const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
     if (!step) return;
     e.preventDefault();
-    const next = tabs[(i + step + tabs.length) % tabs.length];
+    const vis = visibleTabs();
+    const next = vis[(vis.indexOf(t) + step + vis.length) % vis.length];
     showTab(next.dataset.panel);
     next.focus();
   });
-});
+}
 showTab(tabs[0].dataset.panel);
 if (!navigator.platform.startsWith('Mac')) $('tabkey').textContent = 'CTRL+';
 
@@ -150,10 +154,21 @@ $('hooks-install').addEventListener('click', () => petAPI.command({ type: 'insta
 $('close').addEventListener('click', () => petAPI.closeSettings());
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { petAPI.closeSettings(); return; }
+  // Ctrl/⌘ + "+" is the secret knock: it toggles the DEBUG tab. "=" counts
+  // too, since that's the same physical key without shift on most layouts.
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === '+' || e.key === '=')) {
+    e.preventDefault();
+    const dbg = $('tab-debug');
+    dbg.hidden = !dbg.hidden;
+    $('tabrange').textContent = dbg.hidden ? '1-2' : '1-3';
+    if (!dbg.hidden) { showTab('debug'); dbg.focus(); }
+    else if (!$('panel-debug').hidden) showTab(tabs[0].dataset.panel);
+    return;
+  }
   // ⌘1–3 jumps between tabs. Alt is excluded on purpose: every global
   // accelerator this app installs is Cmd+Alt+something.
   if ((e.metaKey || e.ctrlKey) && !e.altKey && /^[1-9]$/.test(e.key)) {
-    const t = tabs[Number(e.key) - 1];
+    const t = visibleTabs()[Number(e.key) - 1];
     if (t) { e.preventDefault(); showTab(t.dataset.panel); t.focus(); }
   }
 });
